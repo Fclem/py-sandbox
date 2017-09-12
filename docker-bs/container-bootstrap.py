@@ -2,6 +2,10 @@
 from __future__ import print_function
 from github import Github
 from plumbum import local
+# from plumbum.machines import LocalMachine
+from plumbum.cmd import tar
+from ssl import SSLError
+import plumbum
 import logging
 import base64
 import sys
@@ -53,7 +57,7 @@ def get_key_bis(name=''):
 
 
 # TODO all these from config/ENV
-GIT_HUB_COMMIT = '9cd13cd4e23c5fcc2cbc044b1bbda2b26c5e6f63'
+GIT_HUB_COMMIT = 'b1fb499a9908bf948088e3f0d04fd0d4111c420a'
 GIT_HUB_USERNAME = 'Fclem'
 GIT_HUB_REPO = 'isbio2'
 GIT_HUB_TOKEN = get_key_bis('git_token')
@@ -97,6 +101,7 @@ CONF_NEXT_SH = EnvVar('NEXT_SH', "%s/run.sh")                              # pat
 ###
 RX_RX_ = 0o550
 RW_RW_ = 0o660
+RWX_RWX_ = 0o770
 
 
 # clem 30/08/2017 from line 6 @ https://goo.gl/BLuUFD 03/02/2016
@@ -134,17 +139,30 @@ class GitHubDownloader(object):
 		self._git_user_name = username
 		self._git_repo_name = repo
 	
+	def _git_safe_query(self, func, *args):
+		try:
+			return func(*args)
+		except SSLError:
+			log.debug('trying again %s' % func.func_name)
+			# try again
+			return self._git_safe_query(func, *args)
+	
 	@property
 	def user(self):
 		if not self._user:
-			self._user = self._git_hub_client.get_user(self._git_user_name)
+			def user_getter():
+				log.debug('getting %s' % self._git_user_name)
+				self._user = self._git_hub_client.get_user(self._git_user_name)
+			self._git_safe_query(user_getter)
 		return self._user
 	
 	@property
 	def repo(self):
 		if not self._repo:
-			log.debug('getting %s/%s' % (self._git_user_name, self._git_repo_name))
-			self._repo = self.user.get_repo(self._git_repo_name)
+			def repo_getter():
+				log.debug('getting %s/%s' % (self._git_user_name, self._git_repo_name))
+				self._repo = self.user.get_repo(self._git_repo_name)
+			self._git_safe_query(repo_getter)
 		return self._repo
 	
 	def download(self, content_file, save_to=None, do_fail=False):
@@ -178,7 +196,7 @@ class GitHubDownloader(object):
 			return self.download(content_file, save_to, True)
 		log.debug('%s % 8s\t%s' % (content_file.sha, human_readable_byte_size(content_file.size), content_file.name))
 		if is_executable:
-			os.chmod(save_to, RX_RX_)
+			os.chmod(save_to, RWX_RWX_)
 		return True
 
 
@@ -197,6 +215,14 @@ def input_pre_handling():
 
 
 def get_var(var_name, *more_vars):
+	""" Return the value, or value n-uples of specified env_vars
+	
+	:param var_name: a env_var name
+	:type var_name: str
+	:param more_vars: a n-uples of env_vars names
+	:return:
+	:rtype:
+	"""
 	a_list = list()
 	var_value = os.environ.get(var_name, '')
 	for each in more_vars:
@@ -204,8 +230,7 @@ def get_var(var_name, *more_vars):
 	if a_list:
 		a_list = tuple([var_value] + a_list)
 	else:
-		a_list = (var_value)
-	# print(a_list)
+		a_list = var_value
 	return a_list
 
 # TODO replace theses vars by generics from config
@@ -221,6 +246,11 @@ def get_var(var_name, *more_vars):
 
 
 def download_storage(storage):
+	""" if the python storage file is not present, it download the whole storage folder from github
+	
+	:param storage: name of the python storage module
+	:type storage: str
+	"""
 	if not os.path.exists(storage):
 		git_hub = GitHubDownloader(GIT_HUB_USERNAME, GIT_HUB_TOKEN, GIT_HUB_REPO)
 		storage_dir = git_hub.repo.get_dir_contents(GIT_HUB_FOLDER_PATH, ref=GIT_HUB_COMMIT)
@@ -229,11 +259,56 @@ def download_storage(storage):
 		for each in storage_dir:
 			git_hub.download(each)
 		log.debug('done, %s files downloaded' % len(storage_dir))
-		
+
+
+class ShellReturn(plumbum.commands.processes.ProcessExecutionError):
+	def __init__(self, e):
+		# if isinstance(e, plumbum.commands.processes.ProcessExecutionError):
+		super(ShellReturn, self).__init__(e.argv, e.retcode, e.stdout, e.stderr)
+	
+	def __nonzero__(self): # PY2
+		return False
+	
+	def __bool__(self): # PY3
+		return self.__nonzero__
+	
+	def __repr__(self):
+		return plumbum.commands.processes.ProcessExecutionError(argv=self.argv, retcode=self.retcode,
+			stdout=self.stdout, stderr=self.stderr)
+
+
+def shell_run(func, *args, **kwargs):
+	""" Wrapper for plumbum
+	
+	:param func:
+	:type func: LocalMachine
+	:param args:
+	:type args:
+	:param kwargs:
+	:type kwargs:
+	:return:
+	:rtype: unicode or ShellReturn
+	"""
+	retcode = kwargs.get('retcode', 0)
+	no_fail = kwargs.get('no_fail', True)
+	verbose = kwargs.get('verbose', True)
+	try:
+		result = func(*args, retcode=retcode)
+		if verbose:
+			print('$ %s %s' % (str(func), ''.join(args)))
+			print(result)
+		return result
+	except plumbum.commands.processes.ProcessExecutionError as e:
+		if not no_fail:
+			raise e
+		if verbose:
+			print(str(e))
+		return ShellReturn(e)
+
 
 def main():
 	job_id, storage = input_pre_handling()
-	log.debug('job_id: %s\nstorage: %s' % (job_id, storage))
+	# log.debug('job_id: %s\nstorage: %s' % (job_id, storage))
 	
 	if not storage:
 		print('no storage module specified, running run.sh for backward compatibility.')
@@ -243,20 +318,31 @@ def main():
 		exit()
 	
 	# TODO get the var_names from settings/config
-	EnvVar('JOB_ID', job_id)                # Job id, i.e. job file to download from storage
+	# EnvVar('JOB_ID', job_id)                # Job id, i.e. job file to download from storage
 	storage_var = EnvVar('STORAGE_FN', '%s.py' % storage) # name of the storage module python file
 	os.chdir(get_var('RES_FOLDER'))
 	
 	download_storage(storage_var.value)
 	
-	log.debug('getting job %s from %s backend' % (job_id, storage_var.value))
-	# ./$AZURE_STORAGE_FN load $JOB_ID
-	# FIXME dummy
-	# EnvVar('AZURE_KEY', '')
-	next_run = local['./%s' % storage_var.value]
-	log.debug('$ %s load %s' % (next_run, job_id))
-	print(next_run('load', job_id))
+	# log.debug('getting job %s from %s backend' % (job_id, storage_var.value))
+	storage_module_shell = local['./%s' % storage_var.value]
+	# log.debug('$ %s upgrade' % storage_module_shell)
+	# result = storage_module_shell('upgrade', retcode=0)
 	
+	result = shell_run(storage_module_shell, 'upgrade')
+	
+	print(type(local))
+	if result:
+		result = shell_run(storage_module_shell, 'load', job_id)
+		if result:
+			result = shell_run(tar)
+			if result:
+				print('cool')
+
 
 if __name__ == '__main__':
+	# FIXME dummy
+	jid = EnvVar('JOB_ID', 'fadf32e0a55f990ac7caa9372e260993')
+	sys.argv[1] = jid.value
+	#
 	main()
