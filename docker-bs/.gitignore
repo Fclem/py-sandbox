@@ -1,0 +1,11 @@
+.*
+!.gitignore
+__init__.py
+apps.py
+azure_storage.py
+blob_storage_module.py
+hubic_storage.py
+lhubic.py
+local_storage_module.py
+project_storage.py
+storage_module_prototype.py

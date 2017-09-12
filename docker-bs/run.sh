@@ -1,3 +1,4 @@
 #!/usr/bin/env bash
 
-echo 'empty'
+echo "path '"$0"'"
+echo "jid '"$1"'"
