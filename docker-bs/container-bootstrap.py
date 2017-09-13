@@ -1,10 +1,14 @@
 #!/usr/bin/python
 from __future__ import print_function
 from github import Github
+from github.Repository import Repository
+from github.NamedUser import NamedUser
+from github.GithubException import UnknownObjectException
 from plumbum import local
 # from plumbum.machines import LocalMachine
-from plumbum.cmd import tar
+# from plumbum.cmd import tar
 from ssl import SSLError
+import tarfile
 import plumbum
 import logging
 import base64
@@ -24,6 +28,66 @@ if PRINT_LOG:
 	ch = logging.StreamHandler()
 	ch.setLevel(LOG_LEVEL)
 	log.addHandler(ch)
+log_func = log.debug
+
+
+# clem 13/09/2017
+class TermColoring(enumerate):
+	HEADER = '\033[95m'
+	OK_BLUE = '\033[94m'
+	T_BLUE = '\033[34m'
+	OK_GREEN = '\033[92m'
+	WARNING = '\033[93m'
+	FAIL = '\033[91m'
+	END_C = '\033[0m'
+	BOLD = '\033[1m'
+	UNDERLINE = '\033[4m'
+	
+	@classmethod
+	def ok_blue(cls, text):
+		return cls.OK_BLUE + text + cls.END_C
+	
+	@classmethod
+	def t_blue(cls, text):
+		return cls.T_BLUE + text + cls.END_C
+	
+	@classmethod
+	def ok_green(cls, text):
+		return cls.OK_GREEN + text + cls.END_C
+	
+	@classmethod
+	def fail(cls, text):
+		return cls.FAIL + text + cls.END_C
+	
+	@classmethod
+	def warning(cls, text):
+		return cls.WARNING + text + cls.END_C
+	
+	@classmethod
+	def header(cls, text):
+		return cls.HEADER + text + cls.END_C
+	
+	@classmethod
+	def bold(cls, text):
+		return cls.BOLD + text + cls.END_C
+	
+	@classmethod
+	def underlined(cls, text):
+		return cls.UNDERLINE + text + cls.END_C
+	
+	@classmethod
+	def cmd_print(cls, command, print_func=log_func):
+		print_func(cls.ok_green('$ ') + command)
+
+	@classmethod
+	def info_print(cls, msg, print_func=log_func, color=None):
+		if not color:
+			color = cls.t_blue
+		print_func(color('%s' % msg))
+
+
+cmd_print = TermColoring.cmd_print
+out_print = TermColoring.info_print
 
 
 # clem 30/08/2017 form line 203 @ https://goo.gl/Wquh6Z clem 08/04/2016 + 10/10/2016
@@ -48,11 +112,12 @@ def get_key_bis(name=''):
 		name = name[1:]
 	try:
 		full_path = '%s/.%s_secret' % (__dir_path__, name)
-		print('accessing key at %s from %s' % (full_path, this_function_caller_name()))
+		log_func('accessing key at %s from %s' % (full_path, this_function_caller_name()))
 		with open(full_path) as f:
 			return str(f.read())[:-1]
 	except IOError:
-		log.warning('could not read key %s' % name)
+		# log.warning(TermColoring.fail('could not read key %s' % name))
+		out_print('could not read key %s' % name, log.error, TermColoring.fail)
 	return ''
 
 
@@ -61,7 +126,7 @@ GIT_HUB_COMMIT = 'b1fb499a9908bf948088e3f0d04fd0d4111c420a'
 GIT_HUB_USERNAME = 'Fclem'
 GIT_HUB_REPO = 'isbio2'
 GIT_HUB_TOKEN = get_key_bis('git_token')
-GIT_HUB_FOLDER_PATH = 'isbio/storage/'
+GIT_HUB_FOLDER_PATH = 'isbio/storage'
 
 
 class EnvVar(object):
@@ -76,6 +141,7 @@ class EnvVar(object):
 			self.export()
 			
 	def __str__(self):
+		# return self.value
 		return "%s('%s', '%s')" % (self.__class__.name, self.name, self.value)
 	
 	@property
@@ -83,21 +149,44 @@ class EnvVar(object):
 		return self.name, self.value
 	
 	def export(self):
-		log.info("export %s='%s'" % self.all)
+		cmd_print("export %s='%s'" % self.all, log.info)
 		os.environ[self.name] = self._value
 		self._exported = True
 		
 	@property
 	def value(self):
 		return self._value
+	
+	@staticmethod
+	def get_var(var_name, *more_vars):
+		""" Return the value, or value n-uples of specified env_vars
+	
+		:param var_name: a env_var name
+		:type var_name: str
+		:param more_vars: a n-uples of env_vars names
+		:return:
+		:rtype:
+		"""
+		a_list = list()
+		var_value = os.environ.get(var_name, '')
+		for each in more_vars:
+			a_list.append(os.environ.get(each, ''))
+		if a_list:
+			a_list = tuple([var_value] + a_list)
+		else:
+			a_list = var_value
+		return a_list
 
+
+get_var = EnvVar.get_var
 
 # TODO all these from config/ENV
 CONF_RES_FOLDER = EnvVar('RES_FOLDER', '/res')
 CONF_IN_FILE = EnvVar('IN_FILE', "in.tar.xz")                              # file name to use for the input/job set archive
 CONF_OUT_FILE = EnvVar('OUT_FILE', "out.tar.xz")                           # file name to use fot the output/result archive
 CONF_OUT_FILE_PATH = EnvVar('OUT_FILE_PATH', "%s/" + CONF_OUT_FILE.value)  # path to the final archive to be created
-CONF_NEXT_SH = EnvVar('NEXT_SH', "%s/run.sh")                              # path of the next file to run
+CONF_NEXT_SH = EnvVar('NEXT_SH', "%s/run.sh" % get_var('HOME'))            # path of the next file to
+#  run
 ###
 RX_RX_ = 0o550
 RW_RW_ = 0o660
@@ -140,30 +229,76 @@ class GitHubDownloader(object):
 		self._git_repo_name = repo
 	
 	def _git_safe_query(self, func, *args):
+		""" wrapper to execture any github query with ssl_timeout handling and auto-retry
+		
+		:param func: The function to call to run the query
+		:type func: callable
+		:param args: any
+		:type args:
+		"""
 		try:
 			return func(*args)
 		except SSLError:
-			log.debug('trying again %s' % func.func_name)
+			out_print('trying again %s' % func.func_name)
 			# try again
 			return self._git_safe_query(func, *args)
 	
 	@property
 	def user(self):
+		""" retrieved and cache GitHub user as defined as username in init
+		
+		:return: the named user
+		:rtype: :class:`github.NamedUser.NamedUser`
+		"""
 		if not self._user:
 			def user_getter():
-				log.debug('getting %s' % self._git_user_name)
-				self._user = self._git_hub_client.get_user(self._git_user_name)
-			self._git_safe_query(user_getter)
+				""" getter for GitHub user
+				
+				:return: the named user
+				:rtype: :class:`github.NamedUser.NamedUser`
+				"""
+				out_print('getting GitHub user %s' % self._git_user_name)
+				return self._git_hub_client.get_user(self._git_user_name)
+			self._user = self._git_safe_query(user_getter)
 		return self._user
 	
 	@property
 	def repo(self):
+		""" retrieved and cache GitHub repository as defined in self._git_repo_name
+		
+		:return:
+		:rtype: :class:`github.Repository.Repository`
+		"""
 		if not self._repo:
 			def repo_getter():
-				log.debug('getting %s/%s' % (self._git_user_name, self._git_repo_name))
-				self._repo = self.user.get_repo(self._git_repo_name)
-			self._git_safe_query(repo_getter)
+				""" getter for GitHub repository
+
+				:return:
+				:rtype: :class:`github.Repository.Repository`
+				"""
+				out_print('getting GitHub repository %s/%s' % (self._git_user_name, self._git_repo_name))
+				return self.user.get_repo(self._git_repo_name)
+			self._repo = self._git_safe_query(repo_getter)
 		return self._repo
+	
+	# clem 13/09/2017
+	def exists(self, file_path, ref):
+		""" check if a specific file exists and is non empty
+		
+		:param file_path: file path
+		:type file_path: str
+		:param ref: commit
+		:type ref: str
+		:return: is_success
+		:rtype: bool
+		:raise: FileNotFoundError
+		"""
+		try:
+			a_file = self.repo.get_file_contents(file_path, ref)
+			assert int(a_file.raw_headers.get('content-length', 0)) > 0, 'file %s exists but is empty' % file_path
+			return True
+		except UnknownObjectException as e:
+			raise FileNotFoundError('There is no such storage module as "%s" available' % os.path.basename(file_path))
 	
 	def download(self, content_file, save_to=None, do_fail=False):
 		""" Download and saves the specified content file
@@ -190,11 +325,11 @@ class GitHubDownloader(object):
 			log_to = log.warning
 			if do_fail: # prevents infinite recursion if chmod has no effect
 				log_to = log.exception
-			log_to('%s on %s %s' % (e.strerror, content_file.path, save_to ))
+			out_print('%s on %s %s' % (e.strerror, content_file.path, save_to), log_to)
 			if e.errno == 13: # Permission denied
 				os.chmod(save_to, RW_RW_)
 			return self.download(content_file, save_to, True)
-		log.debug('%s % 8s\t%s' % (content_file.sha, human_readable_byte_size(content_file.size), content_file.name))
+		log_func('%s % 8s\t%s' % (content_file.sha, human_readable_byte_size(content_file.size), content_file.name))
 		if is_executable:
 			os.chmod(save_to, RWX_RWX_)
 		return True
@@ -213,25 +348,6 @@ def input_pre_handling():
 	
 	return job_id, storage
 
-
-def get_var(var_name, *more_vars):
-	""" Return the value, or value n-uples of specified env_vars
-	
-	:param var_name: a env_var name
-	:type var_name: str
-	:param more_vars: a n-uples of env_vars names
-	:return:
-	:rtype:
-	"""
-	a_list = list()
-	var_value = os.environ.get(var_name, '')
-	for each in more_vars:
-		a_list.append(os.environ.get(each, ''))
-	if a_list:
-		a_list = tuple([var_value] + a_list)
-	else:
-		a_list = var_value
-	return a_list
 
 # TODO replace theses vars by generics from config
 # export('AZURE_STORAGE_ACCOUNT', "breezedata")                 # Azure blob storage account name
@@ -255,10 +371,14 @@ def download_storage(storage):
 		git_hub = GitHubDownloader(GIT_HUB_USERNAME, GIT_HUB_TOKEN, GIT_HUB_REPO)
 		storage_dir = git_hub.repo.get_dir_contents(GIT_HUB_FOLDER_PATH, ref=GIT_HUB_COMMIT)
 		
-		log.info('Downloading storage modules from GitHub...')
-		for each in storage_dir:
-			git_hub.download(each)
-		log.debug('done, %s files downloaded' % len(storage_dir))
+		# check if the specified storage module is in the GitHub folder
+		if git_hub.exists('%s/%s' % (GIT_HUB_FOLDER_PATH, storage), GIT_HUB_COMMIT):
+			out_print('Downloading storage modules from GitHub...', log.info)
+			for each in storage_dir:
+				git_hub.download(each)
+			out_print('done, %s files downloaded' % len(storage_dir))
+	else:
+		out_print('storage module %s already exists, skipping download' % storage, log.info)
 
 
 class ShellReturn(plumbum.commands.processes.ProcessExecutionError):
@@ -295,26 +415,30 @@ def shell_run(func, *args, **kwargs):
 	try:
 		result = func(*args, retcode=retcode)
 		if verbose:
-			print('$ %s %s' % (str(func), ''.join(args)))
-			print(result)
+			cmd_print('%s %s' % (str(func), ''.join(args)))
+			out_print(result)
 		return result
 	except plumbum.commands.processes.ProcessExecutionError as e:
 		if not no_fail:
 			raise e
 		if verbose:
-			print(str(e))
+			log_func(str(e))
 		return ShellReturn(e)
+
+
+# clem 13/09/2017
+class FileNotFoundError(OSError):
+	pass
 
 
 def main():
 	job_id, storage = input_pre_handling()
-	# log.debug('job_id: %s\nstorage: %s' % (job_id, storage))
 	
 	if not storage:
-		print('no storage module specified, running run.sh for backward compatibility.')
+		out_print('no storage module specified, running run.sh for backward compatibility.')
 		base_path = os.path.dirname(__file__)
-		print('$ %s/run.sh' % base_path)
-		print(local['%s/run.sh' % base_path](job_id))
+		cmd_print('%s/run.sh' % base_path)
+		out_print(local['%s/run.sh' % base_path](job_id))
 		exit()
 	
 	# TODO get the var_names from settings/config
@@ -324,20 +448,28 @@ def main():
 	
 	download_storage(storage_var.value)
 	
-	# log.debug('getting job %s from %s backend' % (job_id, storage_var.value))
 	storage_module_shell = local['./%s' % storage_var.value]
-	# log.debug('$ %s upgrade' % storage_module_shell)
-	# result = storage_module_shell('upgrade', retcode=0)
 	
-	result = shell_run(storage_module_shell, 'upgrade')
+	shell_run(storage_module_shell, 'upgrade')
 	
-	print(type(local))
+	result = shell_run(storage_module_shell, 'load', job_id)
 	if result:
-		result = shell_run(storage_module_shell, 'load', job_id)
-		if result:
-			result = shell_run(tar)
-			if result:
-				print('cool')
+		source_file = '%s/%s' % get_var('HOME', 'IN_FILE')
+		extract_to = '%s/' % get_var('HOME')
+		out_print('extracting %s to %s' % (source_file, extract_to))
+		with tarfile.open(source_file, "r") as in_file:
+			# if os.path.exists(CONF_NEXT_SH.value):
+			# 	os.chmod(CONF_NEXT_SH.value, RWX_RWX_)
+			# 	# os.remove(CONF_NEXT_SH.value)
+			in_file.extractall(path=extract_to)
+		out_print('done')
+		os.chmod(CONF_NEXT_SH.value, RX_RX_)
+		
+		out_print('Running %s' % CONF_NEXT_SH.value)
+		# result = out_print(os.stat(CONF_NEXT_SH.value)) # TODO change for run
+		next_run = local[CONF_NEXT_SH.value]
+		result = shell_run(next_run)
+		exit(0) if result else out_print('%s failure (code "%s") !' % (storage, result.retcode), log.error)
 
 
 if __name__ == '__main__':
