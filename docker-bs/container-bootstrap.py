@@ -390,6 +390,7 @@ def download_storage(storage=None):
 	:param storage: name of the python storage module
 	:type storage: str
 	"""
+	os.chdir(get_var('RES_FOLDER'))
 	if not storage or not os.path.exists(storage):
 		git_hub = GitHubDownloader(GIT_HUB_USERNAME, GIT_HUB_TOKEN, GIT_HUB_REPO)
 		
@@ -488,8 +489,8 @@ def main():
 
 
 if __name__ == '__main__':
-	os.chdir(get_var('RES_FOLDER'))
 	if len(sys.argv) >= 2 and sys.argv[1] == 'git_download':
 		# commodity for docker build to have a copy of file upon building the container
+		
 		exit(download_storage())
 	main()
