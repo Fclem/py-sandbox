@@ -121,14 +121,6 @@ def get_key_bis(name=''):
 	return ''
 
 
-# TODO all these from config/ENV
-GIT_HUB_COMMIT = 'b1fb499a9908bf948088e3f0d04fd0d4111c420a'
-GIT_HUB_USERNAME = 'Fclem'
-GIT_HUB_REPO = 'isbio2'
-GIT_HUB_TOKEN = get_key_bis('git_token')
-GIT_HUB_FOLDER_PATH = 'isbio/storage'
-
-
 class EnvVar(object):
 	name = ''
 	_value = ''
@@ -139,7 +131,7 @@ class EnvVar(object):
 		self._value = value
 		if auto_export:
 			self.export()
-			
+	
 	def __str__(self):
 		# return self.value
 		return "%s('%s', '%s')" % (self.__class__.name, self.name, self.value)
@@ -152,7 +144,7 @@ class EnvVar(object):
 		cmd_print("export %s='%s'" % self.all, log.info)
 		os.environ[self.name] = self._value
 		self._exported = True
-		
+	
 	@property
 	def value(self):
 		return self._value
@@ -160,7 +152,7 @@ class EnvVar(object):
 	@staticmethod
 	def get_var(var_name, *more_vars):
 		""" Return the value, or value n-uples of specified env_vars
-	
+
 		:param var_name: a env_var name
 		:type var_name: str
 		:param more_vars: a n-uples of env_vars names
@@ -179,6 +171,13 @@ class EnvVar(object):
 
 
 get_var = EnvVar.get_var
+
+# TODO all these from config/ENV
+GIT_HUB_COMMIT = 'b1fb499a9908bf948088e3f0d04fd0d4111c420a'
+GIT_HUB_USERNAME = 'Fclem'
+GIT_HUB_REPO = 'isbio2'
+GIT_HUB_TOKEN = get_key_bis('git_hub_token') or get_var('GIT_HUB_TOKEN') or ''
+GIT_HUB_FOLDER_PATH = 'isbio/storage'
 
 # TODO all these from config/ENV
 CONF_RES_FOLDER = EnvVar('RES_FOLDER', '/res')
@@ -309,6 +308,9 @@ class GitHubDownloader(object):
 		:param save_to: an optional path to save the file to. If None use the name from github and stores it in the
 		local folder
 		:type save_to: str
+		:param do_fail: should the function raise if for some reason the download raises IOError (will retry once
+		after fixing existing target file permission and raise if unsuccessful)
+		:type do_fail: bool
 		:return: success
 		:rtype: bool
 		"""
@@ -333,6 +335,27 @@ class GitHubDownloader(object):
 		if is_executable:
 			os.chmod(save_to, RWX_RWX_)
 		return True
+	
+	# clem 13/09/2017
+	def download_folder(self, folder_path, ref, save_to=None, do_fail=False):
+		"""Download and saves the specified folder content
+		
+		:param folder_path: the folder path to be downloaded
+		:type folder_path: str
+		:param ref: commit
+		:type ref: str
+		:param save_to: path to save downloaded files to
+		:type save_to: str
+		:param do_fail: should the function raise if for some reason the download raises IOError (will retry once
+		after fixing existing target file permission and raise if unsuccessful)
+		:type do_fail: bool
+		:return: number of downloaded files
+		:rtype: int
+		"""
+		storage_dir = self.repo.get_dir_contents(folder_path, ref)
+		for each in storage_dir:
+			self.download(each, save_to, do_fail)
+		return len(storage_dir)
 
 
 def input_pre_handling():
@@ -361,22 +384,20 @@ def input_pre_handling():
 # print(os.environ)
 
 
-def download_storage(storage):
+def download_storage(storage=None):
 	""" if the python storage file is not present, it download the whole storage folder from github
 	
 	:param storage: name of the python storage module
 	:type storage: str
 	"""
-	if not os.path.exists(storage):
+	if not storage or not os.path.exists(storage):
 		git_hub = GitHubDownloader(GIT_HUB_USERNAME, GIT_HUB_TOKEN, GIT_HUB_REPO)
-		storage_dir = git_hub.repo.get_dir_contents(GIT_HUB_FOLDER_PATH, ref=GIT_HUB_COMMIT)
 		
 		# check if the specified storage module is in the GitHub folder
-		if git_hub.exists('%s/%s' % (GIT_HUB_FOLDER_PATH, storage), GIT_HUB_COMMIT):
+		if not storage or git_hub.exists('%s/%s' % (GIT_HUB_FOLDER_PATH, storage), GIT_HUB_COMMIT):
 			out_print('Downloading storage modules from GitHub...', log.info)
-			for each in storage_dir:
-				git_hub.download(each)
-			out_print('done, %s files downloaded' % len(storage_dir))
+			total_dl = git_hub.download_folder(GIT_HUB_FOLDER_PATH, GIT_HUB_COMMIT)
+			out_print('done, %s files downloaded' % total_dl)
 	else:
 		out_print('storage module %s already exists, skipping download' % storage, log.info)
 
@@ -458,23 +479,22 @@ def main():
 		extract_to = '%s/' % get_var('HOME')
 		out_print('extracting %s to %s' % (source_file, extract_to))
 		with tarfile.open(source_file, "r") as in_file:
-			# if os.path.exists(CONF_NEXT_SH.value):
-			# 	os.chmod(CONF_NEXT_SH.value, RWX_RWX_)
-			# 	# os.remove(CONF_NEXT_SH.value)
 			in_file.extractall(path=extract_to)
 		out_print('done')
 		os.chmod(CONF_NEXT_SH.value, RX_RX_)
 		
 		out_print('Running %s' % CONF_NEXT_SH.value)
-		# result = out_print(os.stat(CONF_NEXT_SH.value)) # TODO change for run
 		next_run = local[CONF_NEXT_SH.value]
 		result = shell_run(next_run)
 		exit(0) if result else out_print('%s failure (code "%s") !' % (storage, result.retcode), log.error)
 
 
 if __name__ == '__main__':
-	# FIXME dummy
-	jid = EnvVar('JOB_ID', 'fadf32e0a55f990ac7caa9372e260993')
-	sys.argv[1] = jid.value
-	#
+	if len(sys.argv) >= 2 and sys.argv[1] == 'git_download':
+		# commodity for docker build to have a copy of file upon building the container
+		exit(download_storage())
+	# dummy
+	# jid = EnvVar('JOB_ID', 'fadf32e0a55f990ac7caa9372e260993')
+	# sys.argv[1] = jid.value
+
 	main()
