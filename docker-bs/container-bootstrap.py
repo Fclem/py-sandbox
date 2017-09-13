@@ -463,9 +463,7 @@ def main():
 		exit()
 	
 	# TODO get the var_names from settings/config
-	# EnvVar('JOB_ID', job_id)                # Job id, i.e. job file to download from storage
 	storage_var = EnvVar('STORAGE_FN', '%s.py' % storage) # name of the storage module python file
-	os.chdir(get_var('RES_FOLDER'))
 	
 	download_storage(storage_var.value)
 	
@@ -490,11 +488,8 @@ def main():
 
 
 if __name__ == '__main__':
+	os.chdir(get_var('RES_FOLDER'))
 	if len(sys.argv) >= 2 and sys.argv[1] == 'git_download':
 		# commodity for docker build to have a copy of file upon building the container
 		exit(download_storage())
-	# dummy
-	# jid = EnvVar('JOB_ID', 'fadf32e0a55f990ac7caa9372e260993')
-	# sys.argv[1] = jid.value
-
 	main()
