@@ -403,6 +403,7 @@ def download_storage(storage=None):
 			out_print('done, %s files downloaded' % total_dl)
 	else:
 		out_print('storage module %s already exists, skipping download' % storage, log.info)
+	return 0
 
 
 class ShellReturn(plumbum.commands.processes.ProcessExecutionError):
@@ -486,7 +487,7 @@ def main():
 	
 	# TODO store keys
 	
-	storage_module_shell = local['./%s' % storage_var.value]
+	storage_module_shell = local['%s/%s' % (CONF_RES_FOLDER.value, storage_var.value)]
 	
 	shell_run(storage_module_shell, 'upgrade')
 	
@@ -512,3 +513,4 @@ if __name__ == '__main__':
 		
 		exit(download_storage())
 	main()
+	exit(99)
