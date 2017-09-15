@@ -1,12 +1,12 @@
 #!/usr/bin/python
 from __future__ import print_function
 from github import Github
+# noinspection PyUnresolvedReferences
 from github.Repository import Repository
+# noinspection PyUnresolvedReferences
 from github.NamedUser import NamedUser
 from github.GithubException import UnknownObjectException
 from plumbum import local
-# from plumbum.machines import LocalMachine
-# from plumbum.cmd import tar
 from ssl import SSLError
 import tarfile
 import plumbum
@@ -100,6 +100,7 @@ def this_function_caller_name(delta=0):
 	:rtype: str
 	"""
 	import sys
+	# noinspection PyProtectedMember
 	return sys._getframe(2 + delta).f_code.co_name if hasattr(sys, "_getframe") else ''
 
 
@@ -156,8 +157,7 @@ class EnvVar(object):
 		:param var_name: a env_var name
 		:type var_name: str
 		:param more_vars: a n-uples of env_vars names
-		:return:
-		:rtype:
+		:type more_vars: str
 		"""
 		a_list = list()
 		var_value = os.environ.get(var_name, '')
@@ -181,7 +181,9 @@ GIT_HUB_FOLDER_PATH = 'isbio/storage'
 
 # TODO all these from config/ENV
 CONF_RES_FOLDER = EnvVar('RES_FOLDER', '/res')
+# noinspection PyPep8
 CONF_IN_FILE = EnvVar('IN_FILE', "in.tar.xz")                              # file name to use for the input/job set archive
+# noinspection PyPep8
 CONF_OUT_FILE = EnvVar('OUT_FILE', "out.tar.xz")                           # file name to use fot the output/result archive
 CONF_OUT_FILE_PATH = EnvVar('OUT_FILE_PATH', "%s/" + CONF_OUT_FILE.value)  # path to the final archive to be created
 CONF_NEXT_SH = EnvVar('NEXT_SH', "%s/run.sh" % get_var('HOME'))            # path of the next file to
@@ -228,7 +230,7 @@ class GitHubDownloader(object):
 		self._git_repo_name = repo
 	
 	def _git_safe_query(self, func, *args):
-		""" wrapper to execture any github query with ssl_timeout handling and auto-retry
+		""" wrapper to execute any github query with ssl_timeout handling and auto-retry
 		
 		:param func: The function to call to run the query
 		:type func: callable
@@ -296,7 +298,7 @@ class GitHubDownloader(object):
 			a_file = self.repo.get_file_contents(file_path, ref)
 			assert int(a_file.raw_headers.get('content-length', 0)) > 0, 'file %s exists but is empty' % file_path
 			return True
-		except UnknownObjectException as e:
+		except UnknownObjectException:
 			raise FileNotFoundError('There is no such storage module as "%s" available' % os.path.basename(file_path))
 	
 	def download(self, content_file, save_to=None, do_fail=False):
@@ -453,8 +455,22 @@ class FileNotFoundError(OSError):
 	pass
 
 
+# clem 15/09/2017
+def save_env(splitter=' '):
+	to_save = get_var('SAVE_LIST')
+	if to_save:
+		for each in to_save.split(splitter):
+			a_var = get_var(each)
+			if a_var:
+				with open('.%s_secret' % each.lower(), 'w') as f:
+					f.write(a_var)
+			del os.environ[each]
+
+
 def main():
 	job_id, storage = input_pre_handling()
+	
+	save_env()
 	
 	if not storage:
 		out_print('no storage module specified, running run.sh for backward compatibility.')
@@ -467,6 +483,8 @@ def main():
 	storage_var = EnvVar('STORAGE_FN', '%s.py' % storage) # name of the storage module python file
 	
 	download_storage(storage_var.value)
+	
+	# TODO store keys
 	
 	storage_module_shell = local['./%s' % storage_var.value]
 	
