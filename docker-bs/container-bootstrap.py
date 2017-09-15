@@ -438,9 +438,10 @@ def shell_run(func, *args, **kwargs):
 	no_fail = kwargs.get('no_fail', True)
 	verbose = kwargs.get('verbose', True)
 	try:
-		result = func(*args, retcode=retcode)
 		if verbose:
 			cmd_print('%s %s' % (str(func), ''.join(args)))
+		result = func(*args, retcode=retcode)
+		if verbose:
 			out_print(result)
 		return result
 	except plumbum.commands.processes.ProcessExecutionError as e:
