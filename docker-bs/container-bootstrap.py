@@ -112,7 +112,7 @@ def get_key_bis(name=''):
 	if name.startswith('.'):
 		name = name[1:]
 	try:
-		full_path = '%s/.%s_secret' % (__dir_path__, name)
+		full_path = '%s/.%s_secret' % (CONF_RES_FOLDER.value, name)
 		log_func('accessing key at %s from %s' % (full_path, this_function_caller_name()))
 		with open(full_path) as f:
 			return str(f.read())[:-1]
@@ -173,13 +173,6 @@ class EnvVar(object):
 get_var = EnvVar.get_var
 
 # TODO all these from config/ENV
-GIT_HUB_COMMIT = 'b1fb499a9908bf948088e3f0d04fd0d4111c420a'
-GIT_HUB_USERNAME = 'Fclem'
-GIT_HUB_REPO = 'isbio2'
-GIT_HUB_TOKEN = get_key_bis('git_hub_token') or get_var('GIT_HUB_TOKEN') or ''
-GIT_HUB_FOLDER_PATH = 'isbio/storage'
-
-# TODO all these from config/ENV
 CONF_RES_FOLDER = EnvVar('RES_FOLDER', '/res')
 # noinspection PyPep8
 CONF_IN_FILE = EnvVar('IN_FILE', "in.tar.xz")                              # file name to use for the input/job set archive
@@ -187,6 +180,13 @@ CONF_IN_FILE = EnvVar('IN_FILE', "in.tar.xz")                              # fil
 CONF_OUT_FILE = EnvVar('OUT_FILE', "out.tar.xz")                           # file name to use fot the output/result archive
 CONF_OUT_FILE_PATH = EnvVar('OUT_FILE_PATH', "%s/" + CONF_OUT_FILE.value)  # path to the final archive to be created
 CONF_NEXT_SH = EnvVar('NEXT_SH', "%s/run.sh" % get_var('HOME'))            # path of the next file to
+
+# TODO all these from config/ENV
+GIT_HUB_COMMIT = 'b1fb499a9908bf948088e3f0d04fd0d4111c420a'
+GIT_HUB_USERNAME = 'Fclem'
+GIT_HUB_REPO = 'isbio2'
+GIT_HUB_TOKEN = get_key_bis('git_hub_token') or get_var('GIT_HUB_TOKEN') or ''
+GIT_HUB_FOLDER_PATH = 'isbio/storage'
 #  run
 ###
 RX_RX_ = 0o550
@@ -462,7 +462,7 @@ def save_env(splitter=' '):
 		for each in to_save.split(splitter):
 			a_var = get_var(each)
 			if a_var:
-				with open('.%s_secret' % each.lower(), 'w') as f:
+				with open('%s/.%s_secret' % (CONF_RES_FOLDER.value, each.lower()), 'w') as f:
 					f.write(a_var)
 			del os.environ[each]
 
