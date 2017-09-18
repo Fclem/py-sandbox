@@ -181,7 +181,7 @@ CONF_OUT_FILE_PATH = EnvVar('OUT_FILE_PATH', "%s/%s" % (HOME.value, CONF_OUT_FIL
 CONF_NEXT_SH = EnvVar('NEXT_SH', "%s/run.sh" % HOME.value)  # path of the next file to
 
 # TODO all these from config/ENV
-GIT_HUB_COMMIT = 'b1fb499a9908bf948088e3f0d04fd0d4111c420a'
+GIT_HUB_COMMIT = '368888b118238fc1e41265994dae1102e9db2487'
 GIT_HUB_USERNAME = 'Fclem'
 GIT_HUB_REPO = 'isbio2'
 GIT_HUB_TOKEN = get_key_bis('git_hub_token') or get_var('GIT_HUB_TOKEN') or ''
