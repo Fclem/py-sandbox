@@ -115,9 +115,8 @@ def get_key_bis(name=''):
 		full_path = '%s/.%s_secret' % (CONF_RES_FOLDER.value, name)
 		log_func('accessing key at %s from %s' % (full_path, this_function_caller_name()))
 		with open(full_path) as f:
-			return str(f.read())[:-1]
+			return str(f.read()).replace('\n', '').replace('\r', '')
 	except IOError:
-		# log.warning(TermColoring.fail('could not read key %s' % name))
 		out_print('could not read key %s' % name, log.error, TermColoring.fail)
 	return ''
 
@@ -374,18 +373,6 @@ def input_pre_handling():
 	return job_id, storage
 
 
-# TODO replace theses vars by generics from config
-# export('AZURE_STORAGE_ACCOUNT', "breezedata")                 # Azure blob storage account name
-# export('STORAGE_FN', "blob_storage_module.py")    # name of the blob-storage interface module python file (for
-# azure-storage)
-# export('AZURE_KEY_FN', ".azure_pwd_%s_secret" % get_var('AZURE_STORAGE_ACCOUNT'))    # file in which to save the
-#  azure storage secret
-# export('AZURE_PY', "%s/%s" % get_var('RES_FOLDER', 'AZURE_STORAGE_FN'))    # full path
-# of the  azure-storage python interface
-# RELEVANT_COMMIT = '02646ed76e75a141d9ec671c68eab1a5439f48bb'
-# print(os.environ)
-
-
 def download_storage(storage=None):
 	""" if the python storage file is not present, it download the whole storage folder from github
 	
@@ -459,13 +446,14 @@ class FileNotFoundError(OSError):
 
 # clem 15/09/2017
 def save_env(splitter=' '):
-	to_save = get_var('SAVE_LIST')
+	to_save = str(get_var('SAVE_LIST'))
 	if to_save:
 		for each in to_save.split(splitter):
-			a_var = get_var(each)
+			a_var = str(get_var(each))
 			if a_var:
 				with open('%s/.%s_secret' % (CONF_RES_FOLDER.value, each.lower()), 'w') as f:
 					f.write(a_var)
+			os.environ[each] = ''
 			del os.environ[each]
 
 
