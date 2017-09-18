@@ -451,8 +451,10 @@ def save_env(splitter=' '):
 		for each in to_save.split(splitter):
 			a_var = str(get_var(each))
 			if a_var:
-				with open('%s/.%s_secret' % (CONF_RES_FOLDER.value, each.lower()), 'w') as f:
+				file_name = '%s/.%s_secret' % (CONF_RES_FOLDER.value, each.lower())
+				with open(file_name, 'w') as f:
 					f.write(a_var)
+					out_print('saved %s to %s' % (each, file_name))
 			os.environ[each] = ''
 			del os.environ[each]
 
