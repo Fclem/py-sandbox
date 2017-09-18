@@ -174,12 +174,12 @@ get_var = EnvVar.get_var
 
 # TODO all these from config/ENV
 CONF_RES_FOLDER = EnvVar('RES_FOLDER', '/res')
-# noinspection PyPep8
-CONF_IN_FILE = EnvVar('IN_FILE', "in.tar.xz")                              # file name to use for the input/job set archive
-# noinspection PyPep8
-CONF_OUT_FILE = EnvVar('OUT_FILE', "out.tar.xz")                           # file name to use fot the output/result archive
-CONF_OUT_FILE_PATH = EnvVar('OUT_FILE_PATH', "%s/" + CONF_OUT_FILE.value)  # path to the final archive to be created
-CONF_NEXT_SH = EnvVar('NEXT_SH', "%s/run.sh" % get_var('HOME'))            # path of the next file to
+CONF_IN_FILE = EnvVar('IN_FILE', "in.tar.xz")               # file name to use for the input/job set archive
+CONF_OUT_FILE = EnvVar('OUT_FILE', "out.tar.xz")            # file name to use fot the output/result archive
+HOME = EnvVar('HOME', get_var('HOME'))
+# path to the final archive to be created
+CONF_OUT_FILE_PATH = EnvVar('OUT_FILE_PATH', "%s/%s" % (HOME.value, CONF_OUT_FILE.value))
+CONF_NEXT_SH = EnvVar('NEXT_SH', "%s/run.sh" % HOME.value)  # path of the next file to
 
 # TODO all these from config/ENV
 GIT_HUB_COMMIT = 'b1fb499a9908bf948088e3f0d04fd0d4111c420a'
@@ -505,6 +505,8 @@ def main():
 		out_print('Running %s' % CONF_NEXT_SH.value)
 		next_run = local[CONF_NEXT_SH.value]
 		result = shell_run(next_run)
+		# TODO move outfile creation and upload here
+		# TODO and hooking too
 		exit(0) if result else out_print('%s failure (code "%s") !' % (storage, result.retcode), log.error)
 
 
