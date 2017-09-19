@@ -447,7 +447,16 @@ def shell_run_bis(command_and_args, retcode=0, no_fail=True, verbose=True):
 	assert isinstance(command_and_args, list)
 	if verbose:
 		cmd_print('%s' % ' '.join(command_and_args))
-	result = subprocess.call(command_and_args)
+	# result = subprocess.call(command_and_args)
+	process = subprocess.Popen(command_and_args, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+	print('stdout:')
+	for line in process.stdout:
+		print(line, end='')
+	print('stderr:')
+	for line in process.stderr:
+		print(line, end='')
+	process.wait()
+	result = process.returncode
 	if verbose:
 		out_print(result)
 	return result == retcode
@@ -509,9 +518,10 @@ def main():
 		out_print('done')
 		os.chmod(CONF_NEXT_SH.value, RX_RX_)
 		
-		out_print('Running %s' % CONF_NEXT_SH.value)
-		next_run = local[CONF_NEXT_SH.value]
-		result = shell_run(next_run)
+		# out_print('Running %s' % CONF_NEXT_SH.value)
+		# next_run = local[CONF_NEXT_SH.value]
+		# result = shell_run(next_run)
+		result = shell_run_bis([CONF_NEXT_SH.value])
 		# TODO move outfile creation and upload here
 		# TODO and hooking too
 		exit(0) if result else out_print('%s failure (code "%s") !' % (storage, result.retcode), log.error)
