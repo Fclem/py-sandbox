@@ -7,6 +7,9 @@ from github.Repository import Repository
 from github.NamedUser import NamedUser
 from github.GithubException import UnknownObjectException
 from plumbum import local
+# from sh import
+# from plumbum.cmd import export
+import subprocess
 from ssl import SSLError
 import tarfile
 import plumbum
@@ -437,7 +440,18 @@ def shell_run(func, *args, **kwargs):
 		if verbose:
 			log_func(str(e))
 		return ShellReturn(e)
+	
 
+# clem 19/09/2017
+def shell_run_bis(command_and_args, retcode=0, no_fail=True, verbose=True):
+	assert isinstance(command_and_args, list)
+	if verbose:
+		cmd_print('%s' % ' '.join(command_and_args))
+	result = subprocess.call(command_and_args)
+	if verbose:
+		out_print(result)
+	return result == retcode
+	
 
 # clem 13/09/2017
 class FileNotFoundError(OSError):
@@ -478,11 +492,14 @@ def main():
 	
 	# TODO store keys
 	
-	storage_module_shell = local['%s/%s' % (CONF_RES_FOLDER.value, storage_var.value)]
+	# storage_module_shell = local['%s/%s' % (CONF_RES_FOLDER.value, storage_var.value)]
+	storage_module_shell = '%s/%s' % (CONF_RES_FOLDER.value, storage_var.value)
 	
-	shell_run(storage_module_shell, 'upgrade')
+	# shell_run(storage_module_shell, 'upgrade')
+	print(shell_run_bis([storage_module_shell, 'upgrade']))
 	
-	result = shell_run(storage_module_shell, 'load', job_id)
+	# result = shell_run(storage_module_shell, 'load', job_id)
+	result = shell_run_bis([storage_module_shell, 'load', job_id])
 	if result:
 		source_file = '%s/%s' % get_var('HOME', 'IN_FILE')
 		extract_to = '%s/' % get_var('HOME')
