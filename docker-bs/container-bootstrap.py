@@ -444,7 +444,8 @@ def shell_run(func, *args, **kwargs):
 
 # clem 19/09/2017
 def shell_run_bis(command_and_args, retcode=0, no_fail=True, verbose=True):
-	assert isinstance(command_and_args, list)
+	if isinstance(command_and_args, list):
+		command_and_args = ' '.join(command_and_args)
 	if verbose:
 		cmd_print('%s' % ' '.join(command_and_args))
 	# result = subprocess.call(command_and_args)
