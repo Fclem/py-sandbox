@@ -443,11 +443,11 @@ def shell_run(func, *args, **kwargs):
 	
 
 # clem 19/09/2017
-def shell_run_bis(command_and_args, retcode=0, no_fail=True, verbose=True):
+def shell_run_bis(command_and_args, retcode=0, verbose=True):
 	if isinstance(command_and_args, list):
 		command_and_args = ' '.join(command_and_args)
 	if verbose:
-		cmd_print('%s' % ' '.join(command_and_args))
+		cmd_print(command_and_args)
 	# result = subprocess.call(command_and_args)
 	process = subprocess.Popen(command_and_args, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 	print('stdout:')
