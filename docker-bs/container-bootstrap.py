@@ -21,7 +21,7 @@ __dir_path__ = os.path.dirname(__path__)
 __file_name__ = os.path.basename(__file__)
 
 PRINT_LOG = True
-LOG_LEVEL = logging.DEBUG
+LOG_LEVEL = logging.INFO
 
 log = logging.getLogger("cont-bootstrap")
 log.setLevel(LOG_LEVEL)
@@ -134,7 +134,6 @@ class EnvVar(object):
 			self.export()
 	
 	def __str__(self):
-		# return self.value
 		return "%s('%s', '%s')" % (self.__class__.name, self.name, self.value)
 	
 	@property
@@ -142,7 +141,7 @@ class EnvVar(object):
 		return self.name, self.value
 	
 	def export(self):
-		cmd_print("export %s='%s'" % self.all, log.info)
+		cmd_print("export %s='%s'" % self.all, log.debug)
 		os.environ[self.name] = self._value
 		self._exported = True
 	
@@ -192,6 +191,7 @@ GIT_HUB_FOLDER_PATH = 'isbio/storage'
 RX_RX_ = 0o550
 RW_RW_ = 0o660
 RWX_RWX_ = 0o770
+storage = ''
 
 
 # clem 30/08/2017 from line 6 @ https://goo.gl/BLuUFD 03/02/2016
@@ -369,28 +369,28 @@ def input_pre_handling():
 	assert len(sys.argv) >= 2
 	
 	job_id = str(sys.argv[1])
-	storage = '' if len(sys.argv) <= 2 else str(sys.argv[2])
+	storage_mod = '' if len(sys.argv) <= 2 else str(sys.argv[2])
 	
-	return job_id, storage
+	return job_id, storage_mod
 
 
-def download_storage(storage=None):
+def download_storage(storage_module=None):
 	""" if the python storage file is not present, it download the whole storage folder from github
 	
-	:param storage: name of the python storage module
-	:type storage: str
+	:param storage_module: name of the python storage module
+	:type storage_module: str
 	"""
 	os.chdir(get_var('RES_FOLDER'))
-	if not storage or not os.path.exists(storage):
+	if not storage_module or not os.path.exists(storage_module):
 		git_hub = GitHubDownloader(GIT_HUB_USERNAME, GIT_HUB_TOKEN, GIT_HUB_REPO)
 		
 		# check if the specified storage module is in the GitHub folder
-		if not storage or git_hub.exists('%s/%s' % (GIT_HUB_FOLDER_PATH, storage), GIT_HUB_COMMIT):
+		if not storage_module or git_hub.exists('%s/%s' % (GIT_HUB_FOLDER_PATH, storage_module), GIT_HUB_COMMIT):
 			out_print('Downloading storage modules from GitHub...', log.info)
 			total_dl = git_hub.download_folder(GIT_HUB_FOLDER_PATH, GIT_HUB_COMMIT)
 			out_print('done, %s files downloaded' % total_dl)
 	else:
-		out_print('storage module %s already exists, skipping download' % storage, log.info)
+		out_print('storage module %s already exists, skipping download' % storage_module, log.info)
 	return 0
 
 
@@ -447,13 +447,14 @@ def shell_run_bis(command_and_args, retcode=0, verbose=True):
 	if verbose:
 		cmd_print(command_and_args)
 	process = subprocess.Popen(command_and_args, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-	print('stdout:')
-	for line in process.stdout:
-		print(line, end='')
-	print('stderr:')
-	for line in process.stderr:
-		print(line, end='')
 	process.wait()
+	log.info('stdout:')
+	for line in process.stdout:
+		log.info(line, end='')
+	if process.stderr:
+		log.warning('stderr:')
+		for line in process.stderr:
+			log.warning(line, end='')
 	result = process.returncode
 	if verbose:
 		out_print(result)
@@ -481,6 +482,7 @@ def save_env(splitter=' '):
 
 
 def main():
+	global storage
 	job_id, storage = input_pre_handling()
 	
 	save_env()
@@ -490,7 +492,7 @@ def main():
 		base_path = os.path.dirname(__file__)
 		cmd_print('%s/run.sh' % base_path)
 		out_print(local['%s/run.sh' % base_path](job_id))
-		exit()
+		exit(0)
 	
 	# TODO get the var_names from settings/config
 	storage_var = EnvVar('STORAGE_FN', '%s.py' % storage) # name of the storage module python file
@@ -501,22 +503,33 @@ def main():
 	
 	storage_module_shell = '%s/%s' % (CONF_RES_FOLDER.value, storage_var.value)
 	
-	print(shell_run_bis([storage_module_shell, 'upgrade']))
+	out_print(shell_run_bis([storage_module_shell, 'upgrade']))
 	
 	result = shell_run_bis([storage_module_shell, 'load', job_id])
 	if result:
 		source_file = '%s/%s' % get_var('HOME', 'IN_FILE')
 		extract_to = '%s/' % get_var('HOME')
-		out_print('extracting %s to %s' % (source_file, extract_to))
+		out_print('extracting %s to %s' % (source_file, extract_to), log.info)
 		with tarfile.open(source_file, "r") as in_file:
 			in_file.extractall(path=extract_to)
-		out_print('done')
+		out_print('done', log.info)
 		os.chmod(CONF_NEXT_SH.value, RX_RX_)
 		
 		result = shell_run_bis([CONF_NEXT_SH.value])
 		# TODO hooking too
 		result2 = shell_run_bis([storage_module_shell, 'save', job_id])
-		exit(0) if result and result2 else out_print('%s failure !' % storage, log.error)
+		return finished(result2 and result)
+	exit(77)
+
+
+def finished(success):
+	global storage
+	if success:
+		out_print('All Done !', log.info)
+		exit(0)
+	else:
+		out_print('%s failure !' % storage, log.critical)
+		exit(88)
 
 
 if __name__ == '__main__':
