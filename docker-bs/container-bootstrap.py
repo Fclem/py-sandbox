@@ -523,9 +523,9 @@ def main():
 		# next_run = local[CONF_NEXT_SH.value]
 		# result = shell_run(next_run)
 		result = shell_run_bis([CONF_NEXT_SH.value])
-		# TODO move outfile creation and upload here
 		# TODO and hooking too
-		exit(0) if result else out_print('%s failure (code "%s") !' % (storage, result.retcode), log.error)
+		result2 = shell_run_bis([storage_module_shell, 'save', job_id])
+		exit(0) if result and result2 else out_print('%s failure !' % storage, log.error)
 
 
 if __name__ == '__main__':
