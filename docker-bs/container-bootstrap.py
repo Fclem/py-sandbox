@@ -7,8 +7,6 @@ from github.Repository import Repository
 from github.NamedUser import NamedUser
 from github.GithubException import UnknownObjectException
 from plumbum import local
-# from sh import
-# from plumbum.cmd import export
 import subprocess
 from ssl import SSLError
 import tarfile
@@ -184,7 +182,7 @@ CONF_OUT_FILE_PATH = EnvVar('OUT_FILE_PATH', "%s/%s" % (HOME.value, CONF_OUT_FIL
 CONF_NEXT_SH = EnvVar('NEXT_SH', "%s/run.sh" % HOME.value)  # path of the next file to
 
 # TODO all these from config/ENV
-GIT_HUB_COMMIT = '368888b118238fc1e41265994dae1102e9db2487'
+GIT_HUB_COMMIT = '967cf699848dfad669c48c4261d4af941293b1f0'
 GIT_HUB_USERNAME = 'Fclem'
 GIT_HUB_REPO = 'isbio2'
 GIT_HUB_TOKEN = get_key_bis('git_hub_token') or get_var('GIT_HUB_TOKEN') or ''
@@ -448,7 +446,6 @@ def shell_run_bis(command_and_args, retcode=0, verbose=True):
 		command_and_args = ' '.join(command_and_args)
 	if verbose:
 		cmd_print(command_and_args)
-	# result = subprocess.call(command_and_args)
 	process = subprocess.Popen(command_and_args, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 	print('stdout:')
 	for line in process.stdout:
@@ -502,13 +499,10 @@ def main():
 	
 	# TODO store keys
 	
-	# storage_module_shell = local['%s/%s' % (CONF_RES_FOLDER.value, storage_var.value)]
 	storage_module_shell = '%s/%s' % (CONF_RES_FOLDER.value, storage_var.value)
 	
-	# shell_run(storage_module_shell, 'upgrade')
 	print(shell_run_bis([storage_module_shell, 'upgrade']))
 	
-	# result = shell_run(storage_module_shell, 'load', job_id)
 	result = shell_run_bis([storage_module_shell, 'load', job_id])
 	if result:
 		source_file = '%s/%s' % get_var('HOME', 'IN_FILE')
@@ -519,11 +513,8 @@ def main():
 		out_print('done')
 		os.chmod(CONF_NEXT_SH.value, RX_RX_)
 		
-		# out_print('Running %s' % CONF_NEXT_SH.value)
-		# next_run = local[CONF_NEXT_SH.value]
-		# result = shell_run(next_run)
 		result = shell_run_bis([CONF_NEXT_SH.value])
-		# TODO and hooking too
+		# TODO hooking too
 		result2 = shell_run_bis([storage_module_shell, 'save', job_id])
 		exit(0) if result and result2 else out_print('%s failure !' % storage, log.error)
 
@@ -531,7 +522,7 @@ def main():
 if __name__ == '__main__':
 	if len(sys.argv) >= 2 and sys.argv[1] == 'git_download':
 		# commodity for docker build to have a copy of file upon building the container
-		
 		exit(download_storage())
+		
 	main()
 	exit(99)
