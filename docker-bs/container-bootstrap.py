@@ -450,11 +450,11 @@ def shell_run_bis(command_and_args, retcode=0, verbose=True):
 	process.wait()
 	log.info('stdout:')
 	for line in process.stdout:
-		log.info(line, end='')
+		log.info(line)
 	if process.stderr:
 		log.warning('stderr:')
 		for line in process.stderr:
-			log.warning(line, end='')
+			log.warning(line)
 	result = process.returncode
 	if verbose:
 		out_print(result)
