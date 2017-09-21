@@ -21,7 +21,7 @@ __dir_path__ = os.path.dirname(__path__)
 __file_name__ = os.path.basename(__file__)
 
 PRINT_LOG = True
-LOG_LEVEL = logging.INFO
+LOG_LEVEL = logging.DEBUG
 
 log = logging.getLogger("cont-bootstrap")
 log.setLevel(LOG_LEVEL)
@@ -43,39 +43,39 @@ class TermColoring(enumerate):
 	END_C = '\033[0m'
 	BOLD = '\033[1m'
 	UNDERLINE = '\033[4m'
-	
+
 	@classmethod
 	def ok_blue(cls, text):
 		return cls.OK_BLUE + text + cls.END_C
-	
+
 	@classmethod
 	def t_blue(cls, text):
 		return cls.T_BLUE + text + cls.END_C
-	
+
 	@classmethod
 	def ok_green(cls, text):
 		return cls.OK_GREEN + text + cls.END_C
-	
+
 	@classmethod
 	def fail(cls, text):
 		return cls.FAIL + text + cls.END_C
-	
+
 	@classmethod
 	def warning(cls, text):
 		return cls.WARNING + text + cls.END_C
-	
+
 	@classmethod
 	def header(cls, text):
 		return cls.HEADER + text + cls.END_C
-	
+
 	@classmethod
 	def bold(cls, text):
 		return cls.BOLD + text + cls.END_C
-	
+
 	@classmethod
 	def underlined(cls, text):
 		return cls.UNDERLINE + text + cls.END_C
-	
+
 	@classmethod
 	def cmd_print(cls, command, print_func=log_func):
 		print_func(cls.ok_green('$ ') + command)
@@ -126,29 +126,29 @@ class EnvVar(object):
 	name = ''
 	_value = ''
 	_exported = False
-	
+
 	def __init__(self, name, value, auto_export=True):
 		self.name = name.upper()
 		self._value = value
 		if auto_export:
 			self.export()
-	
+
 	def __str__(self):
 		return "%s('%s', '%s')" % (self.__class__.name, self.name, self.value)
-	
+
 	@property
 	def all(self):
 		return self.name, self.value
-	
+
 	def export(self):
 		cmd_print("export %s='%s'" % self.all, log.debug)
 		os.environ[self.name] = self._value
 		self._exported = True
-	
+
 	@property
 	def value(self):
 		return self._value
-	
+
 	@staticmethod
 	def get_var(var_name, *more_vars):
 		""" Return the value, or value n-uples of specified env_vars
@@ -214,10 +214,10 @@ class GitHubDownloader(object):
 	_user = None
 	_git_user_name = ''
 	_git_repo_name = ''
-	
+
 	def __init__(self, username, token, repo):
 		""" initialize the github client
-		
+
 		:param username: the github user name
 		:type username: str
 		:param token: the github auth token for that user as found at https://github.com/settings/tokens
@@ -228,10 +228,10 @@ class GitHubDownloader(object):
 		self._git_hub_client = Github(username, token)
 		self._git_user_name = username
 		self._git_repo_name = repo
-	
+
 	def _git_safe_query(self, func, *args):
 		""" wrapper to execute any github query with ssl_timeout handling and auto-retry
-		
+
 		:param func: The function to call to run the query
 		:type func: callable
 		:param args: any
@@ -243,18 +243,18 @@ class GitHubDownloader(object):
 			out_print('trying again %s' % func.func_name)
 			# try again
 			return self._git_safe_query(func, *args)
-	
+
 	@property
 	def user(self):
 		""" retrieved and cache GitHub user as defined as username in init
-		
+
 		:return: the named user
 		:rtype: :class:`github.NamedUser.NamedUser`
 		"""
 		if not self._user:
 			def user_getter():
 				""" getter for GitHub user
-				
+
 				:return: the named user
 				:rtype: :class:`github.NamedUser.NamedUser`
 				"""
@@ -262,11 +262,11 @@ class GitHubDownloader(object):
 				return self._git_hub_client.get_user(self._git_user_name)
 			self._user = self._git_safe_query(user_getter)
 		return self._user
-	
+
 	@property
 	def repo(self):
 		""" retrieved and cache GitHub repository as defined in self._git_repo_name
-		
+
 		:return:
 		:rtype: :class:`github.Repository.Repository`
 		"""
@@ -281,11 +281,11 @@ class GitHubDownloader(object):
 				return self.user.get_repo(self._git_repo_name)
 			self._repo = self._git_safe_query(repo_getter)
 		return self._repo
-	
+
 	# clem 13/09/2017
 	def exists(self, file_path, ref):
 		""" check if a specific file exists and is non empty
-		
+
 		:param file_path: file path
 		:type file_path: str
 		:param ref: commit
@@ -300,10 +300,10 @@ class GitHubDownloader(object):
 			return True
 		except UnknownObjectException:
 			raise FileNotFoundError('There is no such storage module as "%s" available' % os.path.basename(file_path))
-	
+
 	def download(self, content_file, save_to=None, do_fail=False):
 		""" Download and saves the specified content file
-		
+
 		:param content_file: the GithubObject to be downloaded as from self.repo.get_dir_contents or
 		self.repo.get_contents
 		:type content_file: github.ContentFile.ContentFile
@@ -318,7 +318,7 @@ class GitHubDownloader(object):
 		"""
 		if not save_to:
 			save_to = content_file.name
-		
+
 		try:
 			with open(save_to, 'w') as f:
 				content = base64.b64decode(content_file.raw_data.get('content', ''))
@@ -337,11 +337,11 @@ class GitHubDownloader(object):
 		if is_executable:
 			os.chmod(save_to, RWX_RWX_)
 		return True
-	
+
 	# clem 13/09/2017
 	def download_folder(self, folder_path, ref, save_to=None, do_fail=False):
 		"""Download and saves the specified folder content
-		
+
 		:param folder_path: the folder path to be downloaded
 		:type folder_path: str
 		:param ref: commit
@@ -367,23 +367,23 @@ def input_pre_handling():
 	:rtype: tuple[basestring, basestring]
 	"""
 	assert len(sys.argv) >= 2
-	
+
 	job_id = str(sys.argv[1])
 	storage_mod = '' if len(sys.argv) <= 2 else str(sys.argv[2])
-	
+
 	return job_id, storage_mod
 
 
 def download_storage(storage_module=None):
 	""" if the python storage file is not present, it download the whole storage folder from github
-	
+
 	:param storage_module: name of the python storage module
 	:type storage_module: str
 	"""
 	os.chdir(get_var('RES_FOLDER'))
 	if not storage_module or not os.path.exists(storage_module):
 		git_hub = GitHubDownloader(GIT_HUB_USERNAME, GIT_HUB_TOKEN, GIT_HUB_REPO)
-		
+
 		# check if the specified storage module is in the GitHub folder
 		if not storage_module or git_hub.exists('%s/%s' % (GIT_HUB_FOLDER_PATH, storage_module), GIT_HUB_COMMIT):
 			out_print('Downloading storage modules from GitHub...', log.info)
@@ -398,13 +398,13 @@ class ShellReturn(plumbum.commands.processes.ProcessExecutionError):
 	def __init__(self, e):
 		# if isinstance(e, plumbum.commands.processes.ProcessExecutionError):
 		super(ShellReturn, self).__init__(e.argv, e.retcode, e.stdout, e.stderr)
-	
+
 	def __nonzero__(self): # PY2
 		return False
-	
+
 	def __bool__(self): # PY3
 		return self.__nonzero__
-	
+
 	def __repr__(self):
 		return plumbum.commands.processes.ProcessExecutionError(argv=self.argv, retcode=self.retcode,
 			stdout=self.stdout, stderr=self.stderr)
@@ -412,7 +412,7 @@ class ShellReturn(plumbum.commands.processes.ProcessExecutionError):
 
 def shell_run(func, *args, **kwargs):
 	""" Wrapper for plumbum
-	
+
 	:param func:
 	:type func: LocalMachine
 	:param args:
@@ -438,7 +438,7 @@ def shell_run(func, *args, **kwargs):
 		if verbose:
 			log_func(str(e))
 		return ShellReturn(e)
-	
+
 
 # clem 19/09/2017
 def shell_run_bis(command_and_args, retcode=0, verbose=True):
@@ -459,7 +459,7 @@ def shell_run_bis(command_and_args, retcode=0, verbose=True):
 	if verbose:
 		out_print(result)
 	return result == retcode
-	
+
 
 # clem 13/09/2017
 class FileNotFoundError(OSError):
@@ -484,27 +484,27 @@ def save_env(splitter=' '):
 def main():
 	global storage
 	job_id, storage = input_pre_handling()
-	
+
 	save_env()
-	
+
 	if not storage:
 		out_print('no storage module specified, running run.sh for backward compatibility.')
 		base_path = os.path.dirname(__file__)
 		cmd_print('%s/run.sh' % base_path)
 		out_print(local['%s/run.sh' % base_path](job_id))
 		exit(0)
-	
+
 	# TODO get the var_names from settings/config
 	storage_var = EnvVar('STORAGE_FN', '%s.py' % storage) # name of the storage module python file
-	
+
 	download_storage(storage_var.value)
-	
+
 	# TODO store keys
-	
+
 	storage_module_shell = '%s/%s' % (CONF_RES_FOLDER.value, storage_var.value)
-	
+
 	out_print(shell_run_bis([storage_module_shell, 'upgrade']))
-	
+
 	result = shell_run_bis([storage_module_shell, 'load', job_id])
 	if result:
 		source_file = '%s/%s' % get_var('HOME', 'IN_FILE')
@@ -514,7 +514,7 @@ def main():
 			in_file.extractall(path=extract_to)
 		out_print('done', log.info)
 		os.chmod(CONF_NEXT_SH.value, RX_RX_)
-		
+
 		result = shell_run_bis([CONF_NEXT_SH.value])
 		# TODO hooking too
 		result2 = shell_run_bis([storage_module_shell, 'save', job_id])
@@ -536,6 +536,6 @@ if __name__ == '__main__':
 	if len(sys.argv) >= 2 and sys.argv[1] == 'git_download':
 		# commodity for docker build to have a copy of file upon building the container
 		exit(download_storage())
-		
+
 	main()
 	exit(99)
