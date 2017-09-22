@@ -641,6 +641,6 @@ def main():
 if __name__ == '__main__':
 	if len(sys.argv) >= 2 and sys.argv[1] == 'git_download':
 		# commodity for docker build to have a copy of file upon building the container
-		exit(int(download_storage()))
+		exit(int(not download_storage()))
 
 	exit(int(main()))
