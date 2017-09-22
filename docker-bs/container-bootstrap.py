@@ -389,7 +389,7 @@ def download_storage(storage_module=None, verbose=True):
 	:param storage_module: name of the python storage module
 	:type storage_module: str
 	:param verbose: Should extra info be directed to log output (default to True)
-	:type verbose: bool
+	:type verbose: bool | None
 	:return: is success (will return True even if nothing was downloaded, provided there was no errors)
 	:rtype: bool
 	"""
@@ -425,7 +425,7 @@ def shell_run_raw(command, args=list(), verbose=True):
 	:param args: a list of arguments to pass to the command
 	:type args: list
 	:param verbose: Should extra info be directed to log output (default to True)
-	:type verbose: bool
+	:type verbose: bool | None
 	:return: the retcode of the shell process
 	:rtype: int
 	"""
@@ -451,7 +451,7 @@ def shell_run(command, args=list(), retcode=0, verbose=True):
 	:param retcode: the expected return code for the function to return True
 	:type retcode: int
 	:param verbose: Should extra info be directed to log output (default to True)
-	:type verbose: bool
+	:type verbose: bool | None
 	:return: is command return code equals retcode
 	:rtype: bool
 	"""
@@ -473,7 +473,7 @@ def save_env(splitter=' ', verbose=True):
 	:param splitter: the separation char used in SAVE_LIST (default to space)
 	:type splitter: str
 	:param verbose: do print a debug line for each saved env var
-	:type verbose: bool
+	:type verbose: bool | None
 	:return: is success, something was saved, return False otherwise
 	:rtype: bool
 	"""
@@ -501,7 +501,8 @@ def import_storage_module(verbose=True):
 	
 	Has exception management
 	
-	:param verbose: bool
+	:param verbose: send info to the log (default to True)
+	:type verbose: bool | None
 	:return: the storage module implementation instance
 	:rtype: StorageModulePrototype
 	"""
@@ -519,8 +520,8 @@ def import_storage_module(verbose=True):
 def run_next_script(verbose=True):
 	""" Runs the job prep - script (Has exception management)
 	
-	:param verbose: send info the log
-	:type verbose: bool
+	:param verbose: send info to the log (default to True)
+	:type verbose: bool | None
 	:return: is success
 	:rtype:
 	"""
@@ -546,8 +547,8 @@ def extract_tar(source_file, extract_to, verbose=True):
 	:type source_file: basestring
 	:param extract_to: the path to extract the archive to
 	:type extract_to: basestring
-	:param verbose: send info the log
-	:type verbose: bool
+	:param verbose: send info to the log (default to True)
+	:type verbose: bool | None
 	:return: is success
 	:rtype: bool
 	"""
@@ -603,7 +604,7 @@ def main():
 				# if storage_module.download_job_cli(job_queue_storage, job_id):
 				source_file, target_folder = CONF_IN_FILE_PATH.value, CONF_HOME.value
 				out_print('Downloading job %s archive from storage %s' % (job_id, storage), log.info)
-				if storage_module.download_cli(job_queue_storage, job_id, source_file):  # downloading the job
+				if storage_module.download_cli(job_queue_storage, job_id, source_file, True):  # downloading the job
 					# out_print('Extracting job %s archive' % job_id, log.info)
 					if extract_tar(source_file, target_folder): # Extracting archive
 						# result2 = shell_run_bis([storage_module_path, 'save', job_id])
