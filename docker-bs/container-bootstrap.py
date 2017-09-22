@@ -6,11 +6,11 @@ from github.Repository import Repository
 # noinspection PyUnresolvedReferences
 from github.NamedUser import NamedUser
 from github.GithubException import UnknownObjectException
-from plumbum import local
+from res import StorageModulePrototype
 import subprocess
+import importlib
 from ssl import SSLError
 import tarfile
-import plumbum
 import logging
 import base64
 import sys
@@ -172,13 +172,15 @@ class EnvVar(object):
 get_var = EnvVar.get_var
 
 # TODO all these from config/ENV
-CONF_RES_FOLDER = EnvVar('RES_FOLDER', '/res')
+CONF_RES_FOLDER = EnvVar('RES_FOLDER', '/res')              # the resource folder contains keys and storage modules
 CONF_IN_FILE = EnvVar('IN_FILE', "in.tar.xz")               # file name to use for the input/job set archive
 CONF_OUT_FILE = EnvVar('OUT_FILE', "out.tar.xz")            # file name to use fot the output/result archive
-HOME = EnvVar('HOME', get_var('HOME'))
+CONF_HOME = EnvVar('HOME', get_var('HOME'))                 # home folder is where job archive will be extracted
 # path to the final archive to be created
-CONF_OUT_FILE_PATH = EnvVar('OUT_FILE_PATH', "%s/%s" % (HOME.value, CONF_OUT_FILE.value))
-CONF_NEXT_SH = EnvVar('NEXT_SH', "%s/run.sh" % HOME.value)  # path of the next file to
+CONF_OUT_FILE_PATH = EnvVar('OUT_FILE_PATH', "%s/%s" % (CONF_HOME.value, CONF_OUT_FILE.value))
+# path to the local file to download the job archive to
+CONF_IN_FILE_PATH = EnvVar('IN_FILE_PATH', "%s/%s" % (CONF_HOME.value, CONF_IN_FILE.value))
+CONF_NEXT_SH = EnvVar('NEXT_SH', "%s/run.sh" % CONF_HOME.value)  # path of the next script to trigger the job
 
 # TODO all these from config/ENV
 GIT_HUB_COMMIT = 'heads/new_storage'
@@ -230,7 +232,7 @@ class GitHubDownloader(object):
 		self._git_repo_name = repo
 
 	def _git_safe_query(self, func, *args):
-		""" wrapper to execute any github query with ssl_timeout handling and auto-retry
+		""" wrapper to execute any github query with ssl_timeout handling and auto-retry (Has exception management)
 
 		:param func: The function to call to run the query
 		:type func: callable
@@ -284,7 +286,7 @@ class GitHubDownloader(object):
 
 	# clem 13/09/2017
 	def exists(self, file_path, ref):
-		""" check if a specific file exists and is non empty
+		""" check if a specific file exists and is non empty (Has exception management)
 
 		:param file_path: file path
 		:type file_path: str
@@ -366,7 +368,7 @@ def input_pre_handling():
 	:return: (job_id, storage)
 	:rtype: tuple[basestring, basestring]
 	"""
-	assert len(sys.argv) >= 2
+	assert len(sys.argv) >= 2, 'Not enough arguments'
 
 	job_id = str(sys.argv[1])
 	storage_mod = '' if len(sys.argv) <= 2 else str(sys.argv[2])
@@ -374,91 +376,86 @@ def input_pre_handling():
 	return job_id, storage_mod
 
 
-def download_storage(storage_module=None):
+def nop():
+	""" does nothing """
+	pass
+
+
+def download_storage(storage_module=None, verbose=True):
 	""" if the python storage file is not present, it download the whole storage folder from github
+	
+	Has exception management
 
 	:param storage_module: name of the python storage module
 	:type storage_module: str
+	:param verbose: Should extra info be directed to log output (default to True)
+	:type verbose: bool
+	:return: is success (will return True even if nothing was downloaded, provided there was no errors)
+	:rtype: bool
 	"""
-	os.chdir(get_var('RES_FOLDER'))
-	if not storage_module or not os.path.exists(storage_module):
-		git_hub = GitHubDownloader(GIT_HUB_USERNAME, GIT_HUB_TOKEN, GIT_HUB_REPO)
-
-		# check if the specified storage module is in the GitHub folder
-		if not storage_module or git_hub.exists('%s/%s' % (GIT_HUB_FOLDER_PATH, storage_module), GIT_HUB_COMMIT):
-			out_print('Downloading storage modules from GitHub...', log.info)
-			total_dl = git_hub.download_folder(GIT_HUB_FOLDER_PATH, GIT_HUB_COMMIT)
-			out_print('done, %s files downloaded' % total_dl)
-	else:
-		out_print('storage module %s already exists, skipping download' % storage_module, log.info)
-	return 0
-
-
-class ShellReturn(plumbum.commands.processes.ProcessExecutionError):
-	def __init__(self, e):
-		# if isinstance(e, plumbum.commands.processes.ProcessExecutionError):
-		super(ShellReturn, self).__init__(e.argv, e.retcode, e.stdout, e.stderr)
-
-	def __nonzero__(self): # PY2
-		return False
-
-	def __bool__(self): # PY3
-		return self.__nonzero__
-
-	def __repr__(self):
-		return plumbum.commands.processes.ProcessExecutionError(argv=self.argv, retcode=self.retcode,
-			stdout=self.stdout, stderr=self.stderr)
-
-
-def shell_run(func, *args, **kwargs):
-	""" Wrapper for plumbum
-
-	:param func:
-	:type func: LocalMachine
-	:param args:
-	:type args:
-	:param kwargs:
-	:type kwargs:
-	:return:
-	:rtype: unicode or ShellReturn
-	"""
-	retcode = kwargs.get('retcode', 0)
-	no_fail = kwargs.get('no_fail', True)
-	verbose = kwargs.get('verbose', True)
 	try:
-		if verbose:
-			cmd_print('%s %s' % (str(func), ''.join(args)))
-		result = func(*args, retcode=retcode)
-		if verbose:
-			out_print(result)
-		return result
-	except plumbum.commands.processes.ProcessExecutionError as e:
-		if not no_fail:
-			raise e
-		if verbose:
-			log_func(str(e))
-		return ShellReturn(e)
+		os.chdir(get_var('RES_FOLDER'))
+		if not storage_module or not os.path.exists(storage_module):
+			git_hub = GitHubDownloader(GIT_HUB_USERNAME, GIT_HUB_TOKEN, GIT_HUB_REPO)
+	
+			# check if the specified storage module is in the GitHub folder
+			if not storage_module or git_hub.exists('%s/%s' % (GIT_HUB_FOLDER_PATH, storage_module), GIT_HUB_COMMIT):
+				out_print('Downloading storage modules from GitHub...', log.info) if verbose else nop()
+				total_dl = git_hub.download_folder(GIT_HUB_FOLDER_PATH, GIT_HUB_COMMIT)
+				out_print('done, %s files downloaded' % total_dl) if verbose else nop()
+		else:
+			out_print('storage module %s already exists, skipping download' % storage_module, log.info)
+		return True
+	except Exception as e:
+		log.error('Error while downloading storage modules: %s' % str(e))
+	return False
 
 
-# clem 19/09/2017
-def shell_run_bis(command_and_args, retcode=0, verbose=True):
-	if isinstance(command_and_args, list):
-		command_and_args = ' '.join(command_and_args)
-	if verbose:
-		cmd_print(command_and_args)
-	process = subprocess.Popen(command_and_args, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-	process.wait()
-	log.info('stdout:')
-	for line in process.stdout:
-		log.info(line)
-	if process.stderr:
-		log.warning('stderr:')
-		for line in process.stderr:
-			log.warning(line)
-	result = process.returncode
-	if verbose:
-		out_print(result)
-	return result == retcode
+# deleted class ShellReturn on 22/09/2017 as it was deprecated (see commit f3f3e10154210b2cbd2855fef169fd623141387c)
+# deleted shell_run on 22/09/2017 as it was deprecated (see commit f3f3e10154210b2cbd2855fef169fd623141387c)
+# deleted shell_run_bis on 22/09/2017 as it was deprecated (see commit f3f3e10154210b2cbd2855fef169fd623141387c)
+
+
+# clem 22/09/2017
+def shell_run_raw(command, args=list(), verbose=True):
+	""" run a BLOCKING shell command using subprocess.call with Exception management
+	
+	:param command: the command to run. must be a valid shell command, or valid path with no arguments
+	:type command: basestring
+	:param args: a list of arguments to pass to the command
+	:type args: list
+	:param verbose: Should extra info be directed to log output (default to True)
+	:type verbose: bool
+	:return: the retcode of the shell process
+	:rtype: int
+	"""
+	assert isinstance(args, list)
+	retcode = 127
+	print_line = command + ' ' + ' '.join(args) if args else command
+	try:
+		cmd_print(print_line) if verbose else nop()
+		retcode = subprocess.call([command] + args)
+	except Exception as e:
+		log.error('Error while running "%s": %s' % (print_line, str(e)))
+	return retcode
+
+
+# clem 22/09/2017
+def shell_run(command, args=list(), retcode=0, verbose=True):
+	""" run a BLOCKING shell command using subprocess.call with Exception management
+
+	:param command: the command to run. must be a valid shell command, or valid path with no arguments
+	:type command: basestring
+	:param args: a list of arguments to pass to the command
+	:type args: list
+	:param retcode: the expected return code for the function to return True
+	:type retcode: int
+	:param verbose: Should extra info be directed to log output (default to True)
+	:type verbose: bool
+	:return: is command return code equals retcode
+	:rtype: bool
+	"""
+	return shell_run_raw(command, args, verbose) == retcode
 
 
 # clem 13/09/2017
@@ -467,75 +464,183 @@ class FileNotFoundError(OSError):
 
 
 # clem 15/09/2017
-def save_env(splitter=' '):
-	to_save = str(get_var('SAVE_LIST'))
-	if to_save:
-		for each in to_save.split(splitter):
-			a_var = str(get_var(each))
-			if a_var:
-				file_name = '%s/.%s_secret' % (CONF_RES_FOLDER.value, each.lower())
-				with open(file_name, 'w') as f:
-					f.write(a_var)
-					out_print('saved %s to %s' % (each, file_name))
-			os.environ[each] = ''
-			del os.environ[each]
+def save_env(splitter=' ', verbose=True):
+	""" Saves any env var that is listed in the env var SAVE_LIST (space separated) and then deletes it from env
+	
+	Useful for passing on keys to the container
+	Has exception management
+	
+	:param splitter: the separation char used in SAVE_LIST (default to space)
+	:type splitter: str
+	:param verbose: do print a debug line for each saved env var
+	:type verbose: bool
+	:return: is success, something was saved, return False otherwise
+	:rtype: bool
+	"""
+	try:
+		to_save = str(get_var('SAVE_LIST'))
+		if to_save:
+			for each in to_save.split(splitter):
+				a_var = str(get_var(each))
+				if a_var:
+					file_name = '%s/.%s_secret' % (CONF_RES_FOLDER.value, each.lower())
+					with open(file_name, 'w') as f:
+						f.write(a_var)
+						out_print('saved %s to %s' % (each, file_name)) if verbose else nop() # debug
+				os.environ[each] = ''
+				del os.environ[each]
+			return True
+	except Exception as e:
+		log.error('Error while saving env: %s' % str(e))
+	return False
+
+
+# clem 22/09/2017
+def import_storage_module(verbose=True):
+	""" return the storage module implementation instance with res.StorageModulePrototype type
+	
+	Has exception management
+	
+	:param verbose: bool
+	:return: the storage module implementation instance
+	:rtype: StorageModulePrototype
+	"""
+	global storage
+	try:
+		storage_module_path = '%s.%s' % (CONF_RES_FOLDER.value.replace('/', ''), storage)
+		
+		log.info('importing %s' % storage_module_path) if verbose else nop()
+		return importlib.import_module(storage_module_path)
+	except Exception as e:
+		log.error('While importing %s: %s' % (storage, str(e)))
+
+
+# clem 22/09/2017
+def run_next_script(verbose=True):
+	""" Runs the job prep - script (Has exception management)
+	
+	:param verbose: send info the log
+	:type verbose: bool
+	:return: is success
+	:rtype:
+	"""
+	result = False
+	try:
+		# next script path
+		next_shell = CONF_NEXT_SH.value
+		# make it executable (just in case it is not)
+		os.chmod(next_shell, RX_RX_)
+		# run and return is success
+		result = shell_run(next_shell, verbose=verbose)
+		out_print('done', log.info) if verbose else nop()
+	except Exception as e:
+		log.error('Failure during job preparation: %s' % str(e))
+	return result
+
+
+# clem 22/09/2017
+def extract_tar(source_file, extract_to, verbose=True):
+	""" extract an archive source_file to extract_to (Has exception management)
+	
+	:param source_file: the path of the source archive to extract
+	:type source_file: basestring
+	:param extract_to: the path to extract the archive to
+	:type extract_to: basestring
+	:param verbose: send info the log
+	:type verbose: bool
+	:return: is success
+	:rtype: bool
+	"""
+	result = False
+	out_print('extracting %s to %s' % (source_file, extract_to), log.info) if verbose else nop()
+	try:
+		with tarfile.open(source_file, "r") as in_file:
+			in_file.extractall(path=extract_to)
+			result = True
+		out_print('done', log.info) if verbose else nop()
+	except IOError as e:
+		log.error('While extracting job archive: %s' % str(e))
+	return result
 
 
 def main():
 	global storage
 	job_id, storage = input_pre_handling()
-
-	save_env()
+	
+	if not save_env():
+		log.error('Saving ENV vars failed')
 
 	if not storage:
-		out_print('no storage module specified, running run.sh for backward compatibility.')
-		base_path = os.path.dirname(__file__)
-		cmd_print('%s/run.sh' % base_path)
-		out_print(local['%s/run.sh' % base_path](job_id))
-		exit(0)
+		out_print('no storage module specified, running legacy /run.sh for backward compatibility.')
+		return shell_run('%s/run.sh' % os.path.dirname(__file__), [job_id])
 
 	# TODO get the var_names from settings/config
+	# noinspection PyUnusedLocal
 	storage_var = EnvVar('STORAGE_FN', '%s.py' % storage) # name of the storage module python file
+	
+	out_print('Downloading storage modules from GitHub', log.info)
+	if not download_storage(storage_var.value): # FIXME temp for testing
+		out_print('Downloading storage module from GitHub failed (%s)' % storage, log.warning)
 
-	download_storage(storage_var.value)
-
-	# TODO store keys
-
-	storage_module_shell = '%s/%s' % (CONF_RES_FOLDER.value, storage_var.value)
-
-	out_print(shell_run_bis([storage_module_shell, 'upgrade']))
-
-	result = shell_run_bis([storage_module_shell, 'load', job_id])
-	if result:
-		source_file = '%s/%s' % get_var('HOME', 'IN_FILE')
-		extract_to = '%s/' % get_var('HOME')
-		out_print('extracting %s to %s' % (source_file, extract_to), log.info)
-		with tarfile.open(source_file, "r") as in_file:
-			in_file.extractall(path=extract_to)
-		out_print('done', log.info)
-		os.chmod(CONF_NEXT_SH.value, RX_RX_)
-
-		result = shell_run_bis([CONF_NEXT_SH.value])
-		# TODO hooking too
-		result2 = shell_run_bis([storage_module_shell, 'save', job_id])
-		return finished(result2 and result)
-	exit(77)
-
-
-def finished(success):
-	global storage
-	if success:
-		out_print('All Done !', log.info)
-		exit(0)
-	else:
-		out_print('%s failure !' % storage, log.critical)
-		exit(88)
+	# storage_module_path = '%s/%s' % (CONF_RES_FOLDER.value, storage_var.value)
+	
+	# assert isinstance(storage_module, res.StorageModulePrototype)
+	# management_storage_if = storage_module.back_end_initiator(storage_module.management_container())
+	# assert isinstance(management_storage_if, res.StorageServicePrototype)
+	# management_storage_if.
+	# storage_module.command_line_interface()
+	try:
+		storage_module = import_storage_module()
+		if storage_module:
+			management_storage = storage_module.back_end_initiator(storage_module.management_container())
+			out_print('Auto update of storage module', log.info)
+			if storage_module.self_update_cli(management_storage): # self update of storage modules
+				out_print('before storage_module: %s' % hex(id(storage_module)), log.debug)
+				# noinspection PyCompatibility
+				reload(storage_module) # reloading module in case code have been update
+				out_print('after storage_module: %s' % hex(id(storage_module)), log.debug)
+				job_queue_storage = storage_module.back_end_initiator(storage_module.jobs_container())
+				# if storage_module.download_job_cli(job_queue_storage, job_id):
+				source_file, target_folder = CONF_IN_FILE_PATH.value, CONF_HOME.value
+				out_print('Downloading job %s archive from storage %s' % (job_id, storage), log.info)
+				if storage_module.download_cli(job_queue_storage, job_id, source_file):  # downloading the job
+					# out_print('Extracting job %s archive' % job_id, log.info)
+					if extract_tar(source_file, target_folder): # Extracting archive
+						# result2 = shell_run_bis([storage_module_path, 'save', job_id])
+						if run_next_script(): # running the job startup script
+							job_result_storage = storage_module.back_end_initiator(storage_module.data_container())
+							# last_result = storage_module.upload_job_cli(job_result_storage, job_id)
+							out_print('Uploading resulting archive', log.info)
+							# uploading resulting archive
+							if storage_module.upload_cli(job_result_storage, job_id, CONF_OUT_FILE_PATH.value):
+								out_print('All Done !', log.info)
+								return 0
+							else:
+								out_print('Job %s upload failure !' % job_id, log.critical)
+								return 22
+						else:
+							out_print('Job %s run failed.' % job_id, log.warning)
+							return 33
+					else:
+						out_print('Job %s archive extraction failed.' % job_id, log.critical)
+						return 44
+				else:
+					out_print('Job %s download failed.' % job_id, log.critical)
+					return 55
+			else:
+				out_print('Storage modules auto-update failed.', log.error)
+				return 66
+		else:
+			out_print('No storage module was imported (%s).' % storage, log.critical)
+			return 77
+	except Exception as e:
+		out_print('ERR: %s' % e, log.exception)
+		return 99
 
 
 if __name__ == '__main__':
 	if len(sys.argv) >= 2 and sys.argv[1] == 'git_download':
 		# commodity for docker build to have a copy of file upon building the container
-		exit(download_storage())
+		exit(int(download_storage()))
 
-	main()
-	exit(99)
+	exit(int(main()))
