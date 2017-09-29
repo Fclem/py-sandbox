@@ -1,23 +1,60 @@
 from __future__ import print_function
-import __generated as generated
-# from __generated import *
+try:
+	import __generated as generated
+except (SyntaxError, ImportError):
+	generated = None
 import os
 
 __path__ = os.path.realpath(__file__)
 __dir_path__ = os.path.dirname(__path__)
 __file_name__ = os.path.basename(__file__)
 
+GENERATED_MODULE_NAME = '__generated'
+GENERATED_FN = '%s.py' % GENERATED_MODULE_NAME
+GENERATED_PATH = '%s/%s' % (__dir_path__, GENERATED_FN)
+
+ONLY_EXT = ['py']
+EXCLUDE_FILES = ['__init__.py']
+IGNORE_START_WITH = '__'
+
 
 def nop():
 	pass
 
 
+def filter_function(file_name):
+	return not file_name.startswith(IGNORE_START_WITH) \
+		and file_name not in EXCLUDE_FILES \
+		and not ('.' in file_name and file_name.split('.')[-1] in ONLY_EXT)
+
+
 class FilterableList(list):
+	def filter_func(self, filt_func):
+		assert callable(filt_func)
+		return FilterableList(filter(filt_func, self))
+	
 	def filt_ext(self, filter_list=list()):
+		# return FilterableList(
+		#   filter(lambda w: not filter_list or ('.' in w and w.split('.')[-1] in filter_list), self)
+		# )
 		return FilterableList(filter(lambda w: not filter_list or ('.' in w and w.split('.')[-1] in filter_list), self))
 	
-	def filter_out(self, filter_list=list()):
-		return FilterableList(filter(lambda w: not filter_list or w not in filter_list, self))
+	def exclude(self, filter_list=list()):
+		# return FilterableList(filter(lambda w: not filter_list or w not in filter_list, self))
+		return FilterableList(filter(lambda w: not (filter_list and w in filter_list), self))
+	
+	def starting_with(self, txt):
+		return FilterableList(filter(lambda w: not txt or w.startswith(txt), self))
+	
+	def not_starting_with(self, txt=''):
+		# return FilterableList(filter(lambda w: not txt or not w.statswith(txt), self))
+		return FilterableList(filter(lambda w: not (txt and w.startswith(txt)), self))
+	
+	def ending_with(self, txt=''):
+		return FilterableList(filter(lambda w: not txt or w.endswith(txt), self))
+	
+	def not_ending_with(self, txt=''):
+		return FilterableList(filter(lambda w: not (txt and w.endswith(txt)), self))
 	
 	def __repr__(self):
 		return '*%s' % str(super(FilterableList, self).__repr__())
@@ -29,14 +66,17 @@ class FilterableList(list):
 class WalkObject(object):
 	path = ''
 	dir_list = list
-	file_list = list
+	file_list = FilterableList
 	
 	def __init__(self, walk_object):
 		assert isinstance(walk_object, tuple) and len(walk_object) == 3
 		self.path = walk_object[0]
 		self.dir_list = walk_object[1]
 		self.file_list = FilterableList(walk_object[2])
-		
+	
+	def filter_files(self, filter_func):
+		self.file_list = self.file_list.filter_func(filter_func)
+	
 	@property
 	def data(self):
 		return self.path, self.dir_list, self.file_list
@@ -45,10 +85,25 @@ class WalkObject(object):
 		return '<WO:%s>' % str(self.data)
 	
 
-def walker(a_path, filter_ext=list(), filter_out=list(), recursive=False, verbose=False):
+def walker(a_path, filter_ext=list(), exclude=list(), recursive=False, verbose=False):
+	"""
+	
+	:param a_path: str
+	:type a_path: str
+	:param filter_ext:
+	:type filter_ext: list
+	:param exclude:
+	:type exclude: list
+	:param recursive:
+	:type recursive: boot
+	:param verbose:
+	:type verbose: boot
+	:return:
+	:rtype: list[WalkObject]
+	"""
 	if verbose:
 		sup = '' if not filter_ext else ' with ext filter %s' % str(filter_ext)
-		sup3 = '' if not filter_out else ' with filter_out %s' % str(filter_out)
+		sup3 = '' if not exclude else ' with exclude %s' % str(exclude)
 		sup2 = '' if not recursive else ' with recursion'
 		print('walking dir %s%s%s%s' % (a_path, sup, sup3, sup2))
 	walking = [i for i in os.walk(a_path)]
@@ -57,7 +112,9 @@ def walker(a_path, filter_ext=list(), filter_out=list(), recursive=False, verbos
 	print('walk_list: %s' % walk_list) if verbose else nop()
 	for walk_item in [WalkObject(x) for x in walk_list]:
 		print('walk_item: %s' % walk_item) if verbose else nop()
-		result += walk_item.file_list.filt_ext(filter_ext).filter_out(filter_out)
+		# walk_item.file_list = walk_item.file_list.filt_ext(filter_ext).exclude(exclude).not_starting_with('__')
+		walk_item.filter_files(filter_function)
+		result.append(walk_item)
 		# for file_name in walk_item.file_list.filt_ext(filter_ext):
 		# 	result.append(file_name)
 		# 	print('file_name: %s' % file_name) if verbose else nop()
@@ -65,31 +122,34 @@ def walker(a_path, filter_ext=list(), filter_out=list(), recursive=False, verbos
 
 
 class ConfigGenerator(object):
-	file_list = list()
+	walker_list = list # type: list[WalkObject, ]
 	
 	def __init__(self, a_path=__dir_path__, filter_ext=list(), filter_out=list()):
 		filter_ext = filter_ext or ['py']
 		filter_out = filter_out or ['__init__.py']
-		self.file_list = walker(a_path, filter_ext, filter_out)
+		self.walker_list = walker(a_path, filter_ext, filter_out)
+		print(self.gen())
 
 	def __str__(self):
-		return str(self.file_list)
+		return str(self.walker_list)
 	
 	def gen(self):
-		with open(generated.self_path, 'w') as a_file:
-			for each in self.file_list:
-				sup = """from utilz import magic_const, MagicAutoConstEnum
-	
-				"""
-			a_file.write("""
-
-	@magic_const
-	def AzureCloud(): pass
-
+		with open(GENERATED_PATH, 'w') as a_file:
+			sup = ''
+			print('WL: %s' % self.walker_list)
+			for each1 in self.walker_list:
+				print('each1: %s' % each1)
+				print('each1file_list: %s' % each1.file_list)
+				for each2 in each1.file_list:
+					sup += "	@magic_const\n	def %s(): pass\n\n" % each2.replace('.py', '')
+			a_file.write("""# Automatically generated by Breeze
+# Any change WILL BE OVERWRITTEN by Breeze
+from utilz import magic_const, MagicAutoConstEnum
 
 
 # Static object describing available Environments
 # noinspection PyMethodParameters,PyPep8Naming
 class ConfigPrototypeList(MagicAutoConstEnum):
-	%s
-			""" % sup)
+%s""" % (sup if sup else '	pass'))
+		print('sup: %s' % sup)
+		return True
