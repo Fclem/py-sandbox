@@ -2,7 +2,7 @@ import ConfigGenerator
 
 
 def run():
-    return ConfigGenerator.ConfigGenerator()
+    return ConfigGenerator.ConfigGenerator('ConfigEnvironmentsList')
 
 
 if __name__ == '__main__':
