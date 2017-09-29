@@ -7,3 +7,4 @@ def run():
 
 if __name__ == '__main__':
     a = run()
+    a.gen()
