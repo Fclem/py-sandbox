@@ -583,13 +583,6 @@ def main():
 	if not download_storage(storage_var.value): # FIXME temp for testing
 		out_print('Downloading storage module from GitHub failed (%s)' % storage, log.warning)
 
-	# storage_module_path = '%s/%s' % (CONF_RES_FOLDER.value, storage_var.value)
-	
-	# assert isinstance(storage_module, res.StorageModulePrototype)
-	# management_storage_if = storage_module.back_end_initiator(storage_module.management_container())
-	# assert isinstance(management_storage_if, res.StorageServicePrototype)
-	# management_storage_if.
-	# storage_module.command_line_interface()
 	try:
 		storage_module = import_storage_module()
 		if storage_module:
@@ -601,27 +594,25 @@ def main():
 				reload(storage_module) # reloading module in case code have been update
 				out_print('after storage_module: %s' % hex(id(storage_module)), log.debug)
 				job_queue_storage = storage_module.back_end_initiator(storage_module.jobs_container())
-				# if storage_module.download_job_cli(job_queue_storage, job_id):
 				source_file, target_folder = CONF_IN_FILE_PATH.value, CONF_HOME.value
 				out_print('Downloading job %s archive from storage %s' % (job_id, storage), log.info)
 				if storage_module.download_cli(job_queue_storage, job_id, source_file, True):  # downloading the job
-					# out_print('Extracting job %s archive' % job_id, log.info)
 					if extract_tar(source_file, target_folder): # Extracting archive
-						# result2 = shell_run_bis([storage_module_path, 'save', job_id])
-						if run_next_script(): # running the job startup script
-							job_result_storage = storage_module.back_end_initiator(storage_module.data_container())
-							# last_result = storage_module.upload_job_cli(job_result_storage, job_id)
-							out_print('Uploading resulting archive', log.info)
-							# uploading resulting archive
-							if storage_module.upload_cli(job_result_storage, job_id, CONF_OUT_FILE_PATH.value):
-								out_print('All Done !', log.info)
-								return 0
-							else:
-								out_print('Job %s upload failure !' % job_id, log.critical)
-								return 22
+						# TODO send keepalive to Breeze using poke-url ?
+						result = run_next_script() # running the job startup script
+						job_result_storage = storage_module.back_end_initiator(storage_module.data_container())
+						out_print('Uploading resulting archive', log.info)
+						# uploading resulting archive
+						uploaded = storage_module.upload_cli(job_result_storage, job_id, CONF_OUT_FILE_PATH.value)
+						if uploaded:
+							if not result:
+								out_print('Job %s run failed.' % job_id, log.warning)
+								return 33
+							out_print('All Done !', log.info)
+							return 0
 						else:
-							out_print('Job %s run failed.' % job_id, log.warning)
-							return 33
+							out_print('Job %s upload failure !' % job_id, log.critical)
+							return 22
 					else:
 						out_print('Job %s archive extraction failed.' % job_id, log.critical)
 						return 44
