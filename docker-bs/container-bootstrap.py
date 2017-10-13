@@ -26,7 +26,7 @@ LOG_LEVEL = logging.DEBUG
 log = logging.getLogger("cont-bootstrap")
 log.setLevel(LOG_LEVEL)
 if PRINT_LOG:
-	ch = logging.StreamHandler()
+	ch = logging.StreamHandler(sys.stdout)
 	ch.setLevel(LOG_LEVEL)
 	log.addHandler(ch)
 log_func = log.debug
@@ -383,7 +383,7 @@ def nop():
 
 def download_storage(storage_module=None, verbose=True):
 	""" if the python storage file is not present, it download the whole storage folder from github
-	
+
 	Has exception management
 
 	:param storage_module: name of the python storage module
@@ -397,7 +397,7 @@ def download_storage(storage_module=None, verbose=True):
 		os.chdir(get_var('RES_FOLDER'))
 		if not storage_module or not os.path.exists(storage_module):
 			git_hub = GitHubDownloader(GIT_HUB_USERNAME, GIT_HUB_TOKEN, GIT_HUB_REPO)
-	
+
 			# check if the specified storage module is in the GitHub folder
 			if not storage_module or git_hub.exists('%s/%s' % (GIT_HUB_FOLDER_PATH, storage_module), GIT_HUB_COMMIT):
 				out_print('Downloading storage modules from GitHub...', log.info) if verbose else nop()
@@ -419,7 +419,7 @@ def download_storage(storage_module=None, verbose=True):
 # clem 22/09/2017
 def shell_run_raw(command, args=list(), verbose=True):
 	""" run a BLOCKING shell command using subprocess.call with Exception management
-	
+
 	:param command: the command to run. must be a valid shell command, or valid path with no arguments
 	:type command: basestring
 	:param args: a list of arguments to pass to the command
@@ -466,10 +466,10 @@ class FileNotFoundError(OSError):
 # clem 15/09/2017
 def save_env(splitter=' ', verbose=True):
 	""" Saves any env var that is listed in the env var SAVE_LIST (space separated) and then deletes it from env
-	
+
 	Useful for passing on keys to the container
 	Has exception management
-	
+
 	:param splitter: the separation char used in SAVE_LIST (default to space)
 	:type splitter: str
 	:param verbose: do print a debug line for each saved env var
@@ -498,9 +498,9 @@ def save_env(splitter=' ', verbose=True):
 # clem 22/09/2017
 def import_storage_module(verbose=True):
 	""" return the storage module implementation instance with res.StorageModulePrototype type
-	
+
 	Has exception management
-	
+
 	:param verbose: send info to the log (default to True)
 	:type verbose: bool | None
 	:return: the storage module implementation instance
@@ -509,7 +509,7 @@ def import_storage_module(verbose=True):
 	global storage
 	try:
 		storage_module_path = '%s.%s' % (CONF_RES_FOLDER.value.replace('/', ''), storage)
-		
+
 		log.info('importing %s' % storage_module_path) if verbose else nop()
 		return importlib.import_module(storage_module_path)
 	except Exception as e:
@@ -519,7 +519,7 @@ def import_storage_module(verbose=True):
 # clem 22/09/2017
 def run_next_script(verbose=True):
 	""" Runs the job prep - script (Has exception management)
-	
+
 	:param verbose: send info to the log (default to True)
 	:type verbose: bool | None
 	:return: is success
@@ -542,7 +542,7 @@ def run_next_script(verbose=True):
 # clem 22/09/2017
 def extract_tar(source_file, extract_to, verbose=True):
 	""" extract an archive source_file to extract_to (Has exception management)
-	
+
 	:param source_file: the path of the source archive to extract
 	:type source_file: basestring
 	:param extract_to: the path to extract the archive to
@@ -567,7 +567,7 @@ def extract_tar(source_file, extract_to, verbose=True):
 def main():
 	global storage
 	job_id, storage = input_pre_handling()
-	
+
 	if not save_env():
 		log.error('Saving ENV vars failed')
 
@@ -578,7 +578,7 @@ def main():
 	# TODO get the var_names from settings/config
 	# noinspection PyUnusedLocal
 	storage_var = EnvVar('STORAGE_FN', '%s.py' % storage) # name of the storage module python file
-	
+
 	out_print('Downloading storage modules from GitHub', log.info)
 	if not download_storage(storage_var.value): # FIXME temp for testing
 		out_print('Downloading storage module from GitHub failed (%s)' % storage, log.warning)
